@@ -8,9 +8,9 @@ use url::Url;
 use crate::core::models::{
     AccountStatus, ApiKeyList, CreatedApiKey, CreateApiKeyRequest, DeleteApiKeyRequest,
     DiagnosticReport, ExportDiagnosticReportRequest, InstallerScanResult, Login2faRequest,
-    LoginRequest, LoginResult, PublicSettings, QuickScanRequest, QuickScanResult, ScanCheck,
-    ScanOverallStatus, ScanProgressEvent, ScanProgressPhase, SystemEnvironmentScanResult,
-    SystemProfile,
+    LoginRequest, LoginResult, NetworkScanRequest, NetworkScanResult, PublicSettings,
+    QuickScanRequest, QuickScanResult, ScanCheck, ScanOverallStatus, ScanProgressEvent,
+    ScanProgressPhase, SystemEnvironmentScanResult, SystemProfile,
 };
 use crate::{msutools, platform, scanners, telemetry};
 
@@ -31,6 +31,15 @@ pub async fn run_system_environment_scan() -> Result<SystemEnvironmentScanResult
 #[tauri::command]
 pub async fn run_installer_scan() -> Result<InstallerScanResult, String> {
     platform::installer_scan().await.map_err(to_command_error)
+}
+
+#[tauri::command]
+pub async fn run_network_scan(request: Option<NetworkScanRequest>) -> Result<NetworkScanResult, String> {
+    let request = request.unwrap_or_else(|| NetworkScanRequest {
+        base_url: Some(msutools::base_url().to_string()),
+        ..NetworkScanRequest::default()
+    });
+    scanners::network_scan(request).await.map_err(to_command_error)
 }
 
 #[tauri::command]

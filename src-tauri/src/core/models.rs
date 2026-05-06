@@ -70,6 +70,93 @@ pub struct QuickScanResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NetworkScanRequest {
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub timeout_ms: Option<u64>,
+}
+
+impl Default for NetworkScanRequest {
+    fn default() -> Self {
+        Self {
+            base_url: Some("https://www.msutools.cn".to_string()),
+            api_key: None,
+            timeout_ms: Some(8_000),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkScanResult {
+    pub target: Option<String>,
+    pub host: Option<String>,
+    pub scanned_at: String,
+    pub status: ScanOverallStatus,
+    pub exit_ip: Option<NetworkIpInfo>,
+    pub server_ips: Vec<NetworkServerIp>,
+    pub probes: Vec<NetworkHttpProbe>,
+    pub checks: Vec<ScanCheck>,
+    pub findings: Vec<Finding>,
+    pub diagnostic_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkIpInfo {
+    pub ip: String,
+    pub country: Option<String>,
+    pub region: Option<String>,
+    pub city: Option<String>,
+    pub isp: Option<String>,
+    pub org: Option<String>,
+    pub asn: Option<String>,
+    pub timezone: Option<String>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkServerIp {
+    pub ip: String,
+    pub address: String,
+    pub port: u16,
+    pub family: String,
+    pub location: Option<NetworkIpInfo>,
+    pub status: CheckStatus,
+    pub message: String,
+    pub duration_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkHttpProbe {
+    pub id: String,
+    pub title: String,
+    pub method: String,
+    pub url: String,
+    pub status: CheckStatus,
+    pub severity: Severity,
+    pub status_code: Option<u16>,
+    pub reason: Option<String>,
+    pub message: String,
+    pub detail: String,
+    pub suggestion: String,
+    pub duration_ms: u128,
+    pub response_headers: Vec<NetworkHeader>,
+    pub body_preview: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanProgressEvent {
     pub run_id: String,
     pub phase: ScanProgressPhase,

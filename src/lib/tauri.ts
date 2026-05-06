@@ -2,6 +2,7 @@ export type CommandName =
   | "get_system_profile"
   | "run_system_environment_scan"
   | "run_installer_scan"
+  | "run_network_scan"
   | "run_quick_scan"
   | "run_quick_scan_streamed"
   | "stop_quick_scan"
@@ -104,6 +105,62 @@ export type InstallerScanResult = {
   status: QuickScanResult["status"];
   items: InstallerItem[];
   findings: ScanFinding[];
+};
+
+export type NetworkScanRequest = QuickScanRequest;
+
+export type NetworkScanResult = {
+  target?: string;
+  host?: string;
+  scannedAt: string;
+  status: QuickScanResult["status"];
+  exitIp?: NetworkIpInfo;
+  serverIps: NetworkServerIp[];
+  probes: NetworkHttpProbe[];
+  checks: ScanCheck[];
+  findings: ScanFinding[];
+  diagnosticText: string;
+};
+
+export type NetworkIpInfo = {
+  ip: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  isp?: string;
+  org?: string;
+  asn?: string;
+  timezone?: string;
+  source: string;
+};
+
+export type NetworkServerIp = {
+  ip: string;
+  address: string;
+  port: number;
+  family: string;
+  location?: NetworkIpInfo;
+  status: string;
+  message: string;
+  durationMs: number;
+};
+
+export type NetworkHttpProbe = {
+  id: string;
+  title: string;
+  method: string;
+  url: string;
+  status: string;
+  severity: ScanSeverity;
+  statusCode?: number;
+  reason?: string;
+  message: string;
+  detail: string;
+  suggestion: string;
+  durationMs: number;
+  responseHeaders: Array<{ name: string; value: string }>;
+  bodyPreview?: string;
+  error?: string;
 };
 
 export type InstallerItem = {
@@ -253,6 +310,8 @@ export const tauriApi = {
   getSystemProfile: () => invokeCommand<SystemProfile>("get_system_profile"),
   runSystemEnvironmentScan: () => invokeCommand<SystemEnvironmentScanResult>("run_system_environment_scan"),
   runInstallerScan: () => invokeCommand<InstallerScanResult>("run_installer_scan"),
+  runNetworkScan: (request?: NetworkScanRequest) =>
+    invokeCommand<NetworkScanResult>("run_network_scan", { request: request ?? null }),
   runQuickScan: (request?: QuickScanRequest) => invokeCommand<QuickScanResult>("run_quick_scan", { request: request ?? null }),
   runQuickScanStreamed: (request?: QuickScanRequest) =>
     invokeCommand<QuickScanResult>("run_quick_scan_streamed", { request: request ?? null }),

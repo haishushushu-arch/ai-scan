@@ -15,6 +15,7 @@ pub fn run() {
             commands::get_system_profile,
             commands::run_system_environment_scan,
             commands::run_installer_scan,
+            commands::run_network_scan,
             commands::run_quick_scan,
             commands::run_quick_scan_streamed,
             commands::stop_quick_scan,

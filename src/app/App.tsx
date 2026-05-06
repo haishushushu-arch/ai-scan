@@ -7,7 +7,9 @@ import {
   CheckCircle2,
   CircleGauge,
   Code2,
+  Copy,
   CreditCard,
+  Eye,
   EyeOff,
   Home,
   KeyRound,
@@ -28,6 +30,9 @@ import {
   DiagnosticReport,
   InstallerScanResult,
   InvokeResult,
+  NetworkHttpProbe,
+  NetworkScanResult,
+  NetworkServerIp,
   PublicSettings,
   ScanCheck,
   ScanFinding,
@@ -126,11 +131,13 @@ export function App() {
   const [scan, setScan] = useState<InvokeResult<QuickScanResult> | null>(null);
   const [systemScan, setSystemScan] = useState<InvokeResult<SystemEnvironmentScanResult> | null>(null);
   const [installerScan, setInstallerScan] = useState<InvokeResult<InstallerScanResult> | null>(null);
+  const [networkScan, setNetworkScan] = useState<InvokeResult<NetworkScanResult> | null>(null);
   const [liveScan, setLiveScan] = useState<LiveScanState>(initialLiveScan);
   const [scanRequest, setScanRequest] = useState({ baseUrl: "https://www.msutools.cn", apiKey: "" });
   const [isScanning, setIsScanning] = useState(false);
   const [isSystemScanning, setIsSystemScanning] = useState(false);
   const [isInstallerScanning, setIsInstallerScanning] = useState(false);
+  const [isNetworkScanning, setIsNetworkScanning] = useState(false);
 
   async function refreshAccountData() {
     const [nextAccount, nextKeys] = await Promise.all([
@@ -163,12 +170,26 @@ export function App() {
     }
   }
 
+  async function runNetworkScan() {
+    setIsNetworkScanning(true);
+    try {
+      setNetworkScan(await tauriApi.runNetworkScan({
+        baseUrl: scanRequest.baseUrl,
+        apiKey: scanRequest.apiKey || undefined,
+        timeoutMs: 8000,
+      }));
+    } finally {
+      setIsNetworkScanning(false);
+    }
+  }
+
   useEffect(() => {
     void tauriApi.getPublicSettings().then(setSettings);
     void refreshAccountData();
     void tauriApi.getSystemProfile().then(setSystem);
     void runSystemEnvironmentScan();
     void runInstallerScan();
+    void runNetworkScan();
   }, []);
 
   useEffect(() => {
@@ -316,17 +337,20 @@ export function App() {
               system={system}
               systemScan={systemScan}
               installerScan={installerScan}
+              networkScan={networkScan}
               scan={scan}
               liveScan={liveScan}
               scanRequest={scanRequest}
               isScanning={isScanning}
               isSystemScanning={isSystemScanning}
               isInstallerScanning={isInstallerScanning}
+              isNetworkScanning={isNetworkScanning}
               onScanRequestChange={setScanRequest}
               onRunScan={runQuickScan}
               onStopScan={stopQuickScan}
               onRunSystemScan={runSystemEnvironmentScan}
               onRunInstallerScan={runInstallerScan}
+              onRunNetworkScan={runNetworkScan}
             />
           )}
           {activePage === "clients" && <ClientConfigPage />}
@@ -738,22 +762,28 @@ function EnvironmentPage(props: {
   system: InvokeResult<SystemProfile> | null;
   systemScan: InvokeResult<SystemEnvironmentScanResult> | null;
   installerScan: InvokeResult<InstallerScanResult> | null;
+  networkScan: InvokeResult<NetworkScanResult> | null;
   scan: InvokeResult<QuickScanResult> | null;
   liveScan: LiveScanState;
   scanRequest: { baseUrl: string; apiKey: string };
   isScanning: boolean;
   isSystemScanning: boolean;
   isInstallerScanning: boolean;
+  isNetworkScanning: boolean;
   onScanRequestChange: (value: { baseUrl: string; apiKey: string }) => void;
   onRunScan: () => void;
   onStopScan: () => void;
   onRunSystemScan: () => void;
   onRunInstallerScan: () => void;
+  onRunNetworkScan: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<EnvironmentTabId>("fullScan");
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
   const [repairMessage, setRepairMessage] = useState<string | null>(null);
-  const networkChecks = props.scan?.state === "ok" ? props.scan.data.checks ?? [] : [];
+  const [expandedProbeIds, setExpandedProbeIds] = useState<Set<string>>(new Set());
+  const [networkCopyText, setNetworkCopyText] = useState<string | null>(null);
+  const networkResult = props.networkScan?.state === "ok" ? props.networkScan.data : null;
+  const networkFindings = networkResult?.findings ?? [];
   const systemChecks = props.systemScan?.state === "ok" ? props.systemScan.data.checks : [];
   const systemFindings = props.systemScan?.state === "ok" ? props.systemScan.data.findings : [];
   const installerItems = props.installerScan?.state === "ok" ? props.installerScan.data.items : [];
@@ -809,6 +839,29 @@ function EnvironmentPage(props: {
         .map((row, index) => `${index + 1}. ${row.title}：${repairTextForRow(row)}`)
         .join("\n"),
     );
+  }
+
+  function toggleProbeDetails(id: string) {
+    setExpandedProbeIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  async function copyNetworkDiagnostics() {
+    const text = networkResult?.diagnosticText;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setNetworkCopyText("诊断详情已复制。");
+    } catch {
+      setNetworkCopyText("当前环境不允许自动复制，请展开详情后手动复制。");
+    }
   }
 
   return (
@@ -1069,25 +1122,154 @@ function EnvironmentPage(props: {
 
       {activeTab === "network" && (
         <div className="env-tab-panel network-panel" role="tabpanel">
-          <div className="panel">
-            <div className="panel-heading">
-              <h2>网络检测</h2>
-              <span className="badge muted">{props.scan?.state === "ok" ? "已有扫描结果" : "等待扫描"}</span>
+          <section className="panel network-summary-panel">
+            <div className="network-summary-head">
+              <div>
+                <h2>网络检测</h2>
+                <p>检测本地出口、服务器解析、服务器端口和关键 HTTP/API 状态。</p>
+              </div>
+              <div className="network-actions">
+                <button className="primary-action compact" type="button" onClick={props.onRunNetworkScan} disabled={props.isNetworkScanning}>
+                  {props.isNetworkScanning ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
+                  <span>{props.isNetworkScanning ? "检测中" : "重新检测"}</span>
+                </button>
+                <button className="secondary-action compact" type="button" disabled={!networkResult?.diagnosticText} onClick={copyNetworkDiagnostics}>
+                  <Copy size={17} />
+                  <span>复制详情</span>
+                </button>
+              </div>
             </div>
-            {networkChecks.length > 0 ? (
-              <div className="check-result-grid network-results">
-                {networkChecks.map((check) => (
-                  <div className={`check-result ${check.status}`} key={check.id}>
-                    <strong>{check.title}</strong>
-                    <span>{check.message}</span>
-                    <small>{check.durationMs} ms</small>
+
+            <div className="network-kpi-grid">
+              <NetworkKpi
+                title="本地出口 IP"
+                value={networkResult?.exitIp ? networkResult.exitIp.ip : props.isNetworkScanning ? "检测中" : "未检测"}
+                detail={networkResult?.exitIp ? ipLocationText(networkResult.exitIp) : "用于判断用户公网出口和归属地"}
+              />
+              <NetworkKpi
+                title="服务器 IP"
+                value={networkResult?.serverIps.length ? `${networkResult.serverIps.length} 个` : props.isNetworkScanning ? "检测中" : "未检测"}
+                detail={networkResult?.host ?? props.scanRequest.baseUrl}
+              />
+              <NetworkKpi
+                title="总体状态"
+                value={networkResult ? networkStatusText(networkResult.status) : props.isNetworkScanning ? "检测中" : "等待检测"}
+                detail={networkFindings.length > 0 ? `${networkFindings.length} 个问题/建议` : "可截图给客服定位问题"}
+              />
+            </div>
+
+            {props.networkScan?.state !== "ok" && props.networkScan && (
+              <Notice kind="warning" text={props.networkScan.message} />
+            )}
+            {networkCopyText && <p className="form-message compact-message">{networkCopyText}</p>}
+          </section>
+
+          <section className="panel network-server-panel">
+            <div className="panel-heading">
+              <h2>服务器与出口</h2>
+              <span className={networkResult ? statusBadgeClass(networkResult.status) : "badge muted"}>
+                {networkResult ? networkStatusText(networkResult.status) : "等待检测"}
+              </span>
+            </div>
+            {networkResult ? (
+              <div className="network-server-list">
+                <article className="network-server-row">
+                  <div>
+                    <strong>本地出口</strong>
+                    <span>{networkResult.exitIp ? ipLocationText(networkResult.exitIp) : "未获取出口 IP"}</span>
                   </div>
+                  <small>{networkResult.exitIp?.isp ?? networkResult.exitIp?.org ?? "运营商未知"}</small>
+                </article>
+                {networkResult.serverIps.map((server) => (
+                  <ServerIpRow server={server} key={server.address} />
                 ))}
               </div>
             ) : (
-              <EmptyState title="尚未检测网络" description="运行全盘扫描后，这里会显示 DNS、TCP、TLS、HTTP 和模型接口的真实结果。" />
+              <EmptyState title="尚未检测网络" description="点击重新检测后会读取出口 IP、服务器 IP 和端口连通状态。" />
             )}
-          </div>
+          </section>
+
+          <section className="panel network-probe-panel">
+            <div className="panel-heading">
+              <h2>请求状态</h2>
+              <span className="badge muted">{networkResult ? `${networkResult.probes.length} 项` : "等待检测"}</span>
+            </div>
+            {networkResult ? (
+              <div className="network-probe-list">
+                {networkResult.probes.map((probe) => (
+                  <article className={`network-probe ${probe.status}`} key={probe.id}>
+                    <div className="network-probe-main">
+                      <div className="scan-step-icon">{stepIcon(scanCheckStateFromStatus(probe.status))}</div>
+                      <div>
+                        <strong>{probe.title}</strong>
+                        <span>{probe.method} {probe.url}</span>
+                      </div>
+                      <b>{probe.statusCode ? `HTTP ${probe.statusCode}` : "无状态码"}</b>
+                      <button className="secondary-action tiny" type="button" onClick={() => toggleProbeDetails(probe.id)}>
+                        <Eye size={14} />
+                        <span>{expandedProbeIds.has(probe.id) ? "收起" : "详情"}</span>
+                      </button>
+                    </div>
+                    <p>{probe.message}</p>
+                    <small>{probe.suggestion}</small>
+                    {expandedProbeIds.has(probe.id) && (
+                      <div className="network-probe-detail">
+                        <dl>
+                          <div>
+                            <dt>说明</dt>
+                            <dd>{probe.detail}</dd>
+                          </div>
+                          <div>
+                            <dt>用时</dt>
+                            <dd>{probe.durationMs} ms</dd>
+                          </div>
+                          <div>
+                            <dt>响应头</dt>
+                            <dd>{probe.responseHeaders.length > 0 ? probe.responseHeaders.map((header) => `${header.name}: ${header.value}`).join("；") : "无关键响应头"}</dd>
+                          </div>
+                          <div>
+                            <dt>Body</dt>
+                            <dd>{probe.bodyPreview ?? probe.error ?? "无响应正文"}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="等待请求检测" description="会检测首页、/health 和 /v1/models，保留 401/403/404/429/521 等状态详情。" />
+            )}
+          </section>
+
+          <section className="panel network-finding-panel">
+            <div className="panel-heading">
+              <h2>错误详情</h2>
+              <span className="badge muted">{networkFindings.length > 0 ? `${networkFindings.length} 项` : "无错误"}</span>
+            </div>
+            {networkFindings.length > 0 ? (
+              <div className="finding-list">
+                {networkFindings.map((finding) => (
+                  <article className={`finding ${finding.severity}`} key={finding.id}>
+                    <span>{severityLabel(finding.severity)}</span>
+                    <div>
+                      <strong>{finding.title}</strong>
+                      <p>{finding.message}</p>
+                      <small>{finding.nextStep}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="没有网络错误" description="当前网络检测没有返回必须处理的问题。" />
+            )}
+            {networkResult?.diagnosticText && (
+              <div className="network-diagnostic-box">
+                <span>客服诊断文本</span>
+                <pre>{networkResult.diagnosticText}</pre>
+              </div>
+            )}
+          </section>
         </div>
       )}
 
@@ -1263,6 +1445,29 @@ function StatusTile({ title, value, detail }: { title: string; value: string; de
       <strong>{value}</strong>
       <small>{detail}</small>
     </div>
+  );
+}
+
+function NetworkKpi({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="network-kpi">
+      <span>{title}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function ServerIpRow({ server }: { server: NetworkServerIp }) {
+  const state = scanCheckStateFromStatus(server.status);
+  return (
+    <article className={`network-server-row ${server.status}`}>
+      <div>
+        <strong>{server.address}</strong>
+        <span>{server.location ? ipLocationText(server.location) : "归属地未获取"}</span>
+      </div>
+      <small>{server.family} · {stepStateText(state)} · {server.message}</small>
+    </article>
   );
 }
 
@@ -1556,6 +1761,14 @@ function scanCheckState(check: ScanCheck): LiveScanStep["state"] {
   return "skipped";
 }
 
+function scanCheckStateFromStatus(status: string): LiveScanStep["state"] {
+  if (status === "pass") return "pass";
+  if (status === "warn") return "warn";
+  if (status === "fail") return "fail";
+  if (status === "running") return "running";
+  return "skipped";
+}
+
 function currentStepTitle(liveScan: LiveScanState): string {
   const step = liveScan.steps.find((item) => item.id === liveScan.currentStepId);
   return step?.title ?? liveScan.currentStepId ?? "";
@@ -1623,6 +1836,31 @@ function installerScanText(result: InvokeResult<InstallerScanResult> | null): st
   if (result.data.status === "needs_attention") return "需关注";
   if (result.data.status === "not_ready") return "未就绪";
   return "需要安装";
+}
+
+function networkStatusText(status: string): string {
+  if (status === "passed") return "网络正常";
+  if (status === "needs_attention") return "需关注";
+  if (status === "not_ready") return "未就绪";
+  return "存在错误";
+}
+
+function ipLocationText(ip?: {
+  ip: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  isp?: string;
+  org?: string;
+  asn?: string;
+}): string {
+  if (!ip) return "未知";
+  const location = [ip.country, ip.region, ip.city].filter(Boolean).join(" / ");
+  const owner = ip.isp ?? ip.org ?? ip.asn;
+  if (location && owner) return `${ip.ip} · ${location} · ${owner}`;
+  if (location) return `${ip.ip} · ${location}`;
+  if (owner) return `${ip.ip} · ${owner}`;
+  return ip.ip;
 }
 
 function installerStatusText(status: string): string {
