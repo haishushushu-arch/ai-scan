@@ -31,6 +31,7 @@ import {
   ScanCheck,
   ScanProgressEvent,
   QuickScanResult,
+  SystemEnvironmentScanResult,
   SystemProfile,
   listenTauriEvent,
   tauriApi,
@@ -117,9 +118,11 @@ export function App() {
   const [apiKeys, setApiKeys] = useState<InvokeResult<ApiKeySummary[]> | null>(null);
   const [settings, setSettings] = useState<InvokeResult<PublicSettings> | null>(null);
   const [scan, setScan] = useState<InvokeResult<QuickScanResult> | null>(null);
+  const [systemScan, setSystemScan] = useState<InvokeResult<SystemEnvironmentScanResult> | null>(null);
   const [liveScan, setLiveScan] = useState<LiveScanState>(initialLiveScan);
   const [scanRequest, setScanRequest] = useState({ baseUrl: "https://www.msutools.cn", apiKey: "" });
   const [isScanning, setIsScanning] = useState(false);
+  const [isSystemScanning, setIsSystemScanning] = useState(false);
 
   async function refreshAccountData() {
     const [nextAccount, nextKeys] = await Promise.all([
@@ -130,10 +133,24 @@ export function App() {
     setApiKeys(nextKeys);
   }
 
+  async function runSystemEnvironmentScan() {
+    setIsSystemScanning(true);
+    try {
+      const result = await tauriApi.runSystemEnvironmentScan();
+      setSystemScan(result);
+      if (result.state === "ok") {
+        setSystem({ state: "ok", data: result.data.profile });
+      }
+    } finally {
+      setIsSystemScanning(false);
+    }
+  }
+
   useEffect(() => {
     void tauriApi.getPublicSettings().then(setSettings);
     void refreshAccountData();
     void tauriApi.getSystemProfile().then(setSystem);
+    void runSystemEnvironmentScan();
   }, []);
 
   useEffect(() => {
@@ -264,12 +281,15 @@ export function App() {
           {activePage === "environment" && (
             <EnvironmentPage
               system={system}
+              systemScan={systemScan}
               scan={scan}
               liveScan={liveScan}
               scanRequest={scanRequest}
               isScanning={isScanning}
+              isSystemScanning={isSystemScanning}
               onScanRequestChange={setScanRequest}
               onRunScan={runQuickScan}
+              onRunSystemScan={runSystemEnvironmentScan}
             />
           )}
           {activePage === "clients" && <ClientConfigPage />}
@@ -679,15 +699,20 @@ function ApiKeyPage({
 
 function EnvironmentPage(props: {
   system: InvokeResult<SystemProfile> | null;
+  systemScan: InvokeResult<SystemEnvironmentScanResult> | null;
   scan: InvokeResult<QuickScanResult> | null;
   liveScan: LiveScanState;
   scanRequest: { baseUrl: string; apiKey: string };
   isScanning: boolean;
+  isSystemScanning: boolean;
   onScanRequestChange: (value: { baseUrl: string; apiKey: string }) => void;
   onRunScan: () => void;
+  onRunSystemScan: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<EnvironmentTabId>("fullScan");
   const networkChecks = props.scan?.state === "ok" ? props.scan.data.checks ?? [] : [];
+  const systemChecks = props.systemScan?.state === "ok" ? props.systemScan.data.checks : [];
+  const systemFindings = props.systemScan?.state === "ok" ? props.systemScan.data.findings : [];
 
   return (
     <section className="environment-page">
@@ -763,12 +788,14 @@ function EnvironmentPage(props: {
           <div className="panel">
             <div className="panel-heading">
               <h2>本机环境</h2>
-              <span className="badge muted">{invokeDetail(props.system)}</span>
+              <span className={props.systemScan?.state === "ok" ? statusBadgeClass(props.systemScan.data.status) : "badge muted"}>
+                {systemScanText(props.systemScan)}
+              </span>
             </div>
             <dl className="detail-list">
               <div>
                 <dt>操作系统</dt>
-                <dd>{props.system?.state === "ok" ? props.system.data.os : pendingText}</dd>
+                <dd>{props.system?.state === "ok" ? `${props.system.data.os}${props.system.data.osVersion ? ` ${props.system.data.osVersion}` : ""}` : pendingText}</dd>
               </div>
               <div>
                 <dt>架构</dt>
@@ -779,11 +806,59 @@ function EnvironmentPage(props: {
                 <dd>{props.system?.state === "ok" ? props.system.data.shell ?? "接口未返回" : pendingText}</dd>
               </div>
             </dl>
+            <div className="button-row">
+              <button className="primary-action compact" type="button" onClick={props.onRunSystemScan} disabled={props.isSystemScanning}>
+                {props.isSystemScanning ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
+                <span>{props.isSystemScanning ? "检测中" : "重新检测"}</span>
+              </button>
+            </div>
           </div>
-          <ChecklistPanel
-            title="系统环境检测项"
-            items={["系统代理", "环境变量", "Node/Python/Git/curl/Docker", "系统时间", "证书链"]}
-          />
+          <div className="panel system-check-panel">
+            <div className="panel-heading">
+              <h2>检测结果</h2>
+              <span className="badge muted">{systemChecks.length > 0 ? `${systemChecks.length} 项` : "加载中"}</span>
+            </div>
+            {systemChecks.length > 0 ? (
+              <div className="system-check-list">
+                {systemChecks.map((check) => (
+                  <article className={`scan-step ${scanCheckState(check)}`} key={check.id}>
+                    <div className="scan-step-icon">{stepIcon(scanCheckState(check))}</div>
+                    <div className="scan-step-body">
+                      <div>
+                        <strong>{check.title}</strong>
+                        <span>{stepStateText(scanCheckState(check))}</span>
+                      </div>
+                      <p>{check.message}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="正在读取系统环境" description="检测会读取系统概要、环境变量、PATH 和常用命令版本。" />
+            )}
+          </div>
+          <div className="panel system-finding-panel">
+            <div className="panel-heading">
+              <h2>需要关注</h2>
+              <span className="badge muted">{systemFindings.length > 0 ? `${systemFindings.length} 项` : "无问题"}</span>
+            </div>
+            {systemFindings.length > 0 ? (
+              <div className="finding-list">
+                {systemFindings.map((finding) => (
+                  <article className={`finding ${finding.severity}`} key={finding.id}>
+                    <span>{severityLabel(finding.severity)}</span>
+                    <div>
+                      <strong>{finding.title}</strong>
+                      <p>{finding.message}</p>
+                      <small>{finding.nextStep}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="没有系统环境问题" description="当前系统环境检测没有返回需要处理的问题。" />
+            )}
+          </div>
         </div>
       )}
 
@@ -1218,6 +1293,21 @@ function scanValue(result: InvokeResult<QuickScanResult> | null): string {
   if (result.data.status === "not_ready") return "未就绪";
   if (result.data.status === "needs_attention") return "需关注";
   return "需要处理";
+}
+
+function systemScanText(result: InvokeResult<SystemEnvironmentScanResult> | null): string {
+  if (!result) return "检测中";
+  if (result.state !== "ok") return result.message || "检测失败";
+  if (result.data.status === "passed") return "全部通过";
+  if (result.data.status === "needs_attention") return "需关注";
+  if (result.data.status === "not_ready") return "未就绪";
+  return "需要处理";
+}
+
+function statusBadgeClass(status: string): string {
+  if (status === "passed") return "badge success";
+  if (status === "failed") return "badge error";
+  return "badge warning";
 }
 
 function invokeDetail<T>(result: InvokeResult<T> | null): string {

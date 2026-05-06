@@ -13,6 +13,7 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             commands::get_system_profile,
+            commands::run_system_environment_scan,
             commands::run_quick_scan,
             commands::run_quick_scan_streamed,
             commands::get_public_settings,

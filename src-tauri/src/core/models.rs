@@ -430,3 +430,13 @@ pub struct ReportRedactionInfo {
     pub sensitive_values_redacted: bool,
     pub includes_raw_secrets: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemEnvironmentScanResult {
+    pub scanned_at: String,
+    pub status: ScanOverallStatus,
+    pub checks: Vec<ScanCheck>,
+    pub findings: Vec<Finding>,
+    pub profile: SystemProfile,
+}
