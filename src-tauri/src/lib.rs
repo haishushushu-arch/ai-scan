@@ -17,6 +17,7 @@ pub fn run() {
             commands::run_installer_scan,
             commands::run_quick_scan,
             commands::run_quick_scan_streamed,
+            commands::stop_quick_scan,
             commands::get_public_settings,
             commands::login,
             commands::login_2fa,

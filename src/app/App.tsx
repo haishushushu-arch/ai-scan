@@ -30,6 +30,7 @@ import {
   InvokeResult,
   PublicSettings,
   ScanCheck,
+  ScanFinding,
   ScanProgressEvent,
   QuickScanResult,
   SystemEnvironmentScanResult,
@@ -93,6 +94,10 @@ type LiveScanState = {
   startedAt?: string;
   finishedAt?: string;
   steps: LiveScanStep[];
+};
+
+type FullScanRow = LiveScanStep & {
+  finding?: ScanFinding;
 };
 
 const defaultScanSteps: LiveScanStep[] = [
@@ -224,6 +229,21 @@ export function App() {
     }
   }
 
+  async function stopQuickScan() {
+    if (!isScanning) return;
+    setLiveScan((current) => ({
+      ...current,
+      message: "正在停止扫描，当前检查完成后会停下。",
+    }));
+    const result = await tauriApi.stopQuickScan();
+    if (result.state !== "ok") {
+      setLiveScan((current) => ({
+        ...current,
+        message: result.message,
+      }));
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -304,6 +324,7 @@ export function App() {
               isInstallerScanning={isInstallerScanning}
               onScanRequestChange={setScanRequest}
               onRunScan={runQuickScan}
+              onStopScan={stopQuickScan}
               onRunSystemScan={runSystemEnvironmentScan}
               onRunInstallerScan={runInstallerScan}
             />
@@ -725,15 +746,70 @@ function EnvironmentPage(props: {
   isInstallerScanning: boolean;
   onScanRequestChange: (value: { baseUrl: string; apiKey: string }) => void;
   onRunScan: () => void;
+  onStopScan: () => void;
   onRunSystemScan: () => void;
   onRunInstallerScan: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<EnvironmentTabId>("fullScan");
+  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
+  const [repairMessage, setRepairMessage] = useState<string | null>(null);
   const networkChecks = props.scan?.state === "ok" ? props.scan.data.checks ?? [] : [];
   const systemChecks = props.systemScan?.state === "ok" ? props.systemScan.data.checks : [];
   const systemFindings = props.systemScan?.state === "ok" ? props.systemScan.data.findings : [];
   const installerItems = props.installerScan?.state === "ok" ? props.installerScan.data.items : [];
   const installerFindings = props.installerScan?.state === "ok" ? props.installerScan.data.findings : [];
+  const fullScanRows = useMemo(
+    () => buildFullScanRows(props.liveScan, props.scan),
+    [props.liveScan, props.scan],
+  );
+  const selectableScanIds = useMemo(() => fullScanRows.map((row) => row.id), [fullScanRows]);
+  const actionableRows = fullScanRows.filter(isActionableRow);
+  const selectedActionableRows = actionableRows.filter((row) => selectedScanIds.has(row.id));
+  const repairTargetRows = selectedActionableRows.length > 0 ? selectedActionableRows : actionableRows;
+  const allRowsSelected =
+    selectableScanIds.length > 0 && selectableScanIds.every((id) => selectedScanIds.has(id));
+  const partialRowsSelected = selectedScanIds.size > 0 && !allRowsSelected;
+
+  useEffect(() => {
+    setSelectedScanIds((current) => {
+      const allowed = new Set(selectableScanIds);
+      const next = new Set([...current].filter((id) => allowed.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [selectableScanIds.join("|")]);
+
+  function toggleAllScanRows() {
+    setSelectedScanIds((current) => {
+      if (selectableScanIds.length > 0 && selectableScanIds.every((id) => current.has(id))) {
+        return new Set();
+      }
+      return new Set(selectableScanIds);
+    });
+  }
+
+  function toggleScanRow(id: string) {
+    setSelectedScanIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function showRepairPlan(rows: FullScanRow[]) {
+    if (rows.length === 0) {
+      setRepairMessage("当前没有可修复的未通过项。");
+      return;
+    }
+    setRepairMessage(
+      rows
+        .map((row, index) => `${index + 1}. ${row.title}：${repairTextForRow(row)}`)
+        .join("\n"),
+    );
+  }
 
   return (
     <section className="environment-page">
@@ -758,12 +834,52 @@ function EnvironmentPage(props: {
 
       {activeTab === "fullScan" && (
         <div className="env-tab-panel full-scan-panel" role="tabpanel">
-          <div className="panel scan-input-panel">
-            <div className="panel-heading">
-              <h2>全盘扫描</h2>
-              <span className="badge info">真实扫描参数</span>
+          <section className="panel full-scan-command">
+            <div className="full-scan-command-row">
+              <div className="full-scan-title">
+                <h2>全盘扫描</h2>
+                <span className={props.liveScan.active ? "badge info" : props.scan?.state === "ok" ? statusBadgeClass(props.scan.data.status) : "badge muted"}>
+                  {props.liveScan.active ? "正在扫描" : props.scan?.state === "ok" ? scanValue(props.scan) : "等待开始"}
+                </span>
+              </div>
+              <div className="full-scan-actions">
+                <button className="primary-action compact" type="button" disabled={props.isScanning} onClick={props.onRunScan}>
+                  {props.isScanning ? <Loader2 size={17} className="spin" /> : <SearchCheck size={17} />}
+                  <span>{props.isScanning ? "扫描中" : props.scan ? "重新扫描" : "开始扫描"}</span>
+                </button>
+                <button className="danger-action compact" type="button" disabled={!props.isScanning} onClick={props.onStopScan}>
+                  <XCircle size={17} />
+                  <span>停止</span>
+                </button>
+                <button
+                  className="secondary-action compact"
+                  type="button"
+                  disabled={repairTargetRows.length === 0}
+                  onClick={() => showRepairPlan(repairTargetRows)}
+                >
+                  <Wrench size={17} />
+                  <span>一键修复</span>
+                </button>
+              </div>
             </div>
-            <div className="scan-input-grid">
+
+            <div className="full-scan-progress-line">
+              <div className="scan-progress-header">
+                <div>
+                  <strong>{props.liveScan.message}</strong>
+                  <span>
+                    完成 {props.liveScan.completed}/{props.liveScan.total}
+                    {props.liveScan.currentStepId ? ` · 当前：${currentStepTitle(props.liveScan)}` : ""}
+                  </span>
+                </div>
+                <b>{Math.round(props.liveScan.progress)}%</b>
+              </div>
+              <div className="scan-progress-track" aria-label="扫描进度">
+                <div style={{ width: `${props.liveScan.progress}%` }} />
+              </div>
+            </div>
+
+            <div className="full-scan-config-row">
               <label>
                 <span>API 地址</span>
                 <input
@@ -775,32 +891,100 @@ function EnvironmentPage(props: {
                 />
               </label>
               <label>
-                <span>API Key，可留空</span>
+                <span>API Key</span>
                 <input
                   type="password"
                   value={props.scanRequest.apiKey}
                   onChange={(event) =>
                     props.onScanRequestChange({ ...props.scanRequest, apiKey: event.target.value })
                   }
-                  placeholder="sk-..."
+                  placeholder="可留空，填入后检查模型接口"
                   autoComplete="off"
                 />
               </label>
-              <button className="primary-action compact" type="button" disabled={props.isScanning} onClick={props.onRunScan}>
-                {props.isScanning ? <Loader2 size={17} className="spin" /> : <SearchCheck size={17} />}
-                <span>{props.isScanning ? "扫描中" : "开始扫描"}</span>
-              </button>
+              <div className="full-scan-counters">
+                <span>通过 {fullScanRows.filter((row) => row.state === "pass").length}</span>
+                <span>关注 {fullScanRows.filter((row) => row.state === "warn" || row.state === "skipped").length}</span>
+                <span>未过 {fullScanRows.filter((row) => row.state === "fail").length}</span>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="status-grid environment-status">
-            <StatusTile title="系统信息" value={systemValue(props.system)} detail={invokeDetail(props.system)} />
-            <StatusTile title="网络接口" value={scanValue(props.scan)} detail={invokeDetail(props.scan)} />
-            <StatusTile title="扫描进度" value={`${Math.round(props.liveScan.progress)}%`} detail={`完成 ${props.liveScan.completed}/${props.liveScan.total}`} />
-          </div>
+          <section className="panel super-scan-panel">
+            <div className="super-list-heading">
+              <div>
+                <h2>超级列表</h2>
+                <span>每个扫描项逐项过关，支持多选后批量处理。</span>
+              </div>
+              <span className="badge muted">已选 {selectedScanIds.size}</span>
+            </div>
 
-          <LiveScanPanel liveScan={props.liveScan} scan={props.scan} />
-          <ResultPanel scan={props.scan} />
+            <div className="super-scan-list" role="table" aria-label="全盘扫描项">
+              <div className="super-scan-head" role="row">
+                <label className={partialRowsSelected ? "scan-check-cell mixed" : "scan-check-cell"}>
+                  <input
+                    type="checkbox"
+                    checked={allRowsSelected}
+                    aria-checked={partialRowsSelected ? "mixed" : allRowsSelected}
+                    onChange={toggleAllScanRows}
+                  />
+                </label>
+                <span>状态</span>
+                <span>扫描项</span>
+                <span>结果</span>
+                <span>用时</span>
+                <span>操作</span>
+              </div>
+
+              <div className="super-scan-body">
+                {fullScanRows.map((row) => (
+                  <article
+                    className={`super-scan-row ${row.state}${selectedScanIds.has(row.id) ? " selected" : ""}`}
+                    key={row.id}
+                    role="row"
+                  >
+                    <label className="scan-check-cell">
+                      <input
+                        type="checkbox"
+                        checked={selectedScanIds.has(row.id)}
+                        onChange={() => toggleScanRow(row.id)}
+                        aria-label={`选择 ${row.title}`}
+                      />
+                    </label>
+                    <div className="scan-row-status">
+                      {stepIcon(row.state)}
+                      <span>{stepStateText(row.state)}</span>
+                    </div>
+                    <div className="scan-row-title">
+                      <strong>{row.title}</strong>
+                      <small>{row.id}</small>
+                    </div>
+                    <p>{row.message}</p>
+                    <small>{typeof row.durationMs === "number" && row.durationMs > 0 ? `${row.durationMs} ms` : "-"}</small>
+                    {isActionableRow(row) ? (
+                      <button
+                        className="secondary-action tiny"
+                        type="button"
+                        onClick={() => showRepairPlan([row])}
+                      >
+                        <Wrench size={14} />
+                        <span>修复</span>
+                      </button>
+                    ) : (
+                      <span className="scan-row-no-action">-</span>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            {repairMessage && (
+              <div className="scan-repair-advice">
+                <strong>修复建议</strong>
+                <pre>{repairMessage}</pre>
+              </div>
+            )}
+          </section>
         </div>
       )}
 
@@ -1242,13 +1426,16 @@ function resetScanSteps(): LiveScanStep[] {
 function applyScanProgressEvent(current: LiveScanState, event: ScanProgressEvent): LiveScanState {
   const next: LiveScanState = {
     ...current,
-    active: event.phase !== "finished" && event.phase !== "failed",
+    active: event.phase !== "finished" && event.phase !== "canceled" && event.phase !== "failed",
     progress: event.progress,
     completed: event.completed,
     total: event.total,
     currentStepId: event.currentStepId,
     message: event.message,
-    finishedAt: event.phase === "finished" || event.phase === "failed" ? event.emittedAt : current.finishedAt,
+    finishedAt:
+      event.phase === "finished" || event.phase === "canceled" || event.phase === "failed"
+        ? event.emittedAt
+        : current.finishedAt,
     steps: current.steps,
   };
 
@@ -1294,6 +1481,72 @@ function applyScanProgressEvent(current: LiveScanState, event: ScanProgressEvent
       return step;
     }),
   };
+}
+
+function buildFullScanRows(
+  liveScan: LiveScanState,
+  scan: InvokeResult<QuickScanResult> | null,
+): FullScanRow[] {
+  const rows: FullScanRow[] = liveScan.steps.map((step) => ({ ...step }));
+  if (scan?.state !== "ok") return rows;
+
+  const findingsByCheck = new Map<string, ScanFinding>();
+  for (const finding of scan.data.findings) {
+    const checkId = scan.data.checks?.find((check) => finding.id.startsWith(`${check.id}_`))?.id;
+    if (checkId && !findingsByCheck.has(checkId)) {
+      findingsByCheck.set(checkId, finding);
+    }
+  }
+
+  for (const check of scan.data.checks ?? []) {
+    const row = rows.find((item) => item.id === check.id);
+    if (row) {
+      row.state = scanCheckState(check);
+      row.message = check.message;
+      row.durationMs = check.durationMs;
+      row.evidence = check.evidence;
+      row.finding = findingsByCheck.get(check.id);
+    } else {
+      rows.push({
+        id: check.id,
+        title: check.title,
+        state: scanCheckState(check),
+        message: check.message,
+        durationMs: check.durationMs,
+        evidence: check.evidence,
+        finding: findingsByCheck.get(check.id),
+      });
+    }
+  }
+
+  return rows;
+}
+
+function isActionableRow(row: FullScanRow): boolean {
+  return row.state === "fail" || row.state === "warn" || row.state === "skipped";
+}
+
+function repairTextForRow(row: FullScanRow): string {
+  return row.finding?.fixSuggestion ?? row.finding?.nextStep ?? fallbackRepairText(row.id);
+}
+
+function fallbackRepairText(id: string): string {
+  switch (id) {
+    case "dns":
+      return "请检查域名拼写、DNS、VPN 或系统代理配置。";
+    case "tcp":
+      return "请检查防火墙、代理、VPN，以及目标服务端口是否开放。";
+    case "tls":
+      return "请检查系统时间、证书信任、HTTPS 代理拦截或源站证书配置。";
+    case "http":
+      return "请确认 API 地址是否正确，以及该地址是否用于 OpenAI 兼容接口。";
+    case "models":
+      return "请确认 API Key 是否正确、账户是否可用，并确认服务暴露 GET /v1/models。";
+    case "canceled":
+      return "请重新运行全盘扫描以获得完整诊断结果。";
+    default:
+      return "请打开专业模式查看详细证据后处理。";
+  }
 }
 
 function scanCheckState(check: ScanCheck): LiveScanStep["state"] {

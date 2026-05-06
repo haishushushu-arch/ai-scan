@@ -90,6 +90,7 @@ pub enum ScanProgressPhase {
     StepStarted,
     StepFinished,
     Finished,
+    Canceled,
     Failed,
 }
 

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use chrono::Utc;
@@ -12,6 +13,8 @@ use crate::core::models::{
     SystemProfile,
 };
 use crate::{msutools, platform, scanners, telemetry};
+
+static QUICK_SCAN_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub async fn get_system_profile() -> Result<SystemProfile, String> {
@@ -44,6 +47,7 @@ pub async fn run_quick_scan_streamed(
     app: tauri::AppHandle,
     request: Option<QuickScanRequest>,
 ) -> Result<QuickScanResult, String> {
+    QUICK_SCAN_CANCELLED.store(false, Ordering::SeqCst);
     let request = request.unwrap_or_else(|| QuickScanRequest {
         base_url: Some(msutools::base_url().to_string()),
         ..QuickScanRequest::default()
@@ -51,6 +55,12 @@ pub async fn run_quick_scan_streamed(
     streamed_quick_scan(app, request)
         .await
         .map_err(to_command_error)
+}
+
+#[tauri::command]
+pub async fn stop_quick_scan() -> Result<(), String> {
+    QUICK_SCAN_CANCELLED.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -174,15 +184,27 @@ async fn streamed_quick_scan(
         }
     };
 
+    if let Some(result) = maybe_cancel_scan(&app, &run_id, &target, &started_at, &checks, total) {
+        return Ok(result);
+    }
+
     emit_step_started(&app, &run_id, checks.len(), total, "dns", "DNS 解析");
     let dns = scanners::check_dns(&parsed).await;
     checks.push(dns.clone());
     emit_step_finished(&app, &run_id, checks.len(), total, dns);
 
+    if let Some(result) = maybe_cancel_scan(&app, &run_id, &target, &started_at, &checks, total) {
+        return Ok(result);
+    }
+
     emit_step_started(&app, &run_id, checks.len(), total, "tcp", "TCP 连接");
     let tcp = scanners::check_tcp(&parsed, timeout_duration).await;
     checks.push(tcp.clone());
     emit_step_finished(&app, &run_id, checks.len(), total, tcp);
+
+    if let Some(result) = maybe_cancel_scan(&app, &run_id, &target, &started_at, &checks, total) {
+        return Ok(result);
+    }
 
     emit_step_started(&app, &run_id, checks.len(), total, "tls", "TLS 证书");
     let tls = if parsed.scheme() == "https" {
@@ -197,10 +219,18 @@ async fn streamed_quick_scan(
     checks.push(tls.clone());
     emit_step_finished(&app, &run_id, checks.len(), total, tls);
 
+    if let Some(result) = maybe_cancel_scan(&app, &run_id, &target, &started_at, &checks, total) {
+        return Ok(result);
+    }
+
     emit_step_started(&app, &run_id, checks.len(), total, "http", "HTTP 响应");
     let http = scanners::check_http_root(&base_url, timeout_duration).await;
     checks.push(http.clone());
     emit_step_finished(&app, &run_id, checks.len(), total, http);
+
+    if let Some(result) = maybe_cancel_scan(&app, &run_id, &target, &started_at, &checks, total) {
+        return Ok(result);
+    }
 
     emit_step_started(&app, &run_id, checks.len(), total, "models", "模型接口");
     let models =
@@ -222,6 +252,57 @@ async fn streamed_quick_scan(
     };
     emit_finished(&app, &run_id, &result, total);
     Ok(result)
+}
+
+fn maybe_cancel_scan(
+    app: &tauri::AppHandle,
+    run_id: &str,
+    target: &Option<String>,
+    started_at: &chrono::DateTime<Utc>,
+    checks: &[ScanCheck],
+    total: usize,
+) -> Option<QuickScanResult> {
+    if !QUICK_SCAN_CANCELLED.load(Ordering::SeqCst) {
+        return None;
+    }
+
+    let mut partial_checks = checks.to_vec();
+    partial_checks.push(scanners::skipped_check(
+        "canceled",
+        "扫描控制",
+        "用户已停止本次扫描。",
+    ));
+    let mut findings = scanners::findings_from_checks(&partial_checks);
+    findings.push(crate::core::models::Finding {
+        id: "scan_canceled".to_string(),
+        title: "扫描已停止".to_string(),
+        severity: crate::core::models::Severity::Info,
+        message: "本次扫描由用户主动停止，结果只包含已经完成的检查项。".to_string(),
+        next_step: "如需完整诊断，请重新点击开始扫描。".to_string(),
+        fix_suggestion: Some("重新运行全盘扫描可以获得完整诊断结果。".to_string()),
+    });
+    let finished_at = Utc::now().to_rfc3339();
+    let result = QuickScanResult {
+        target: target.clone(),
+        started_at: started_at.to_rfc3339(),
+        finished_at: finished_at.clone(),
+        status: ScanOverallStatus::NeedsAttention,
+        scanned_at: finished_at,
+        checks: partial_checks,
+        findings,
+    };
+
+    emit_scan_progress(
+        app,
+        run_id,
+        ScanProgressPhase::Canceled,
+        checks.len(),
+        total,
+        None,
+        "扫描已停止。".to_string(),
+    );
+    QUICK_SCAN_CANCELLED.store(false, Ordering::SeqCst);
+    Some(result)
 }
 
 fn emit_step_started(

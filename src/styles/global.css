@@ -333,6 +333,20 @@ button {
   padding: 0 12px;
 }
 
+.secondary-action.compact,
+.danger-action.compact {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.secondary-action.tiny {
+  min-width: 66px;
+  min-height: 28px;
+  padding: 0 9px;
+  gap: 5px;
+  font-size: 12px;
+}
+
 .secondary-action {
   min-height: 34px;
   padding: 0 12px;
@@ -345,6 +359,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid #efb7b7;
@@ -830,38 +845,281 @@ button {
 
 .full-scan-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.75fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
-}
-
-.full-scan-panel .scan-input-panel,
-.full-scan-panel .environment-status {
-  grid-column: 1 / -1;
-}
-
-.full-scan-panel .scan-live-panel {
-  grid-column: 1 / 2;
+  height: 100%;
   min-height: 0;
 }
 
-.full-scan-panel > .panel:last-child,
-.full-scan-panel > .empty-state:last-child {
-  grid-column: 2 / 3;
+.full-scan-command {
+  display: grid;
+  gap: 10px;
   min-height: 0;
 }
 
-.full-scan-panel .scan-input-panel {
-  padding: 12px;
+.full-scan-command-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.full-scan-panel .scan-input-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.82fr) auto;
+.full-scan-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+}
+
+.full-scan-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.full-scan-progress-line {
+  display: grid;
+  gap: 7px;
+}
+
+.full-scan-config-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.85fr) auto;
   align-items: end;
+  gap: 8px;
 }
 
-.full-scan-panel .scan-input-grid input {
+.full-scan-config-row label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.full-scan-config-row label span {
+  color: #566273;
+  font-size: 12px;
+}
+
+.full-scan-config-row input {
+  width: 100%;
+  min-width: 0;
   min-height: 31px;
+  padding: 6px 9px;
+  border: 1px solid #cfd8e3;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #202632;
+  font: inherit;
+  font-size: 13px;
+}
+
+.full-scan-counters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 31px;
+}
+
+.full-scan-counters span {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #465365;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.super-scan-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.super-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.super-list-heading h2 {
+  margin: 0;
+}
+
+.super-list-heading span {
+  color: #697586;
+  font-size: 12px;
+}
+
+.super-list-heading > .badge {
+  color: #5f6f85;
+}
+
+.super-scan-list {
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
+  min-height: 0;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.super-scan-head,
+.super-scan-row {
+  display: grid;
+  grid-template-columns: 38px 112px minmax(128px, 0.58fr) minmax(0, 1fr) 76px 86px;
+  align-items: center;
+  gap: 8px;
+}
+
+.super-scan-head {
+  min-height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid #d7dee8;
+  background: #f4f7fb;
+  color: #566273;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.super-scan-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.super-scan-row {
+  min-height: 50px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #edf1f5;
+  background: #ffffff;
+}
+
+.super-scan-row:last-child {
+  border-bottom: 0;
+}
+
+.super-scan-row.selected {
+  background: #eef7ff;
+}
+
+.super-scan-row.running {
+  background: #f1f8fd;
+}
+
+.super-scan-row.pass .scan-row-status {
+  color: #11643d;
+}
+
+.super-scan-row.warn .scan-row-status,
+.super-scan-row.skipped .scan-row-status {
+  color: #715100;
+}
+
+.super-scan-row.fail .scan-row-status {
+  color: #a32626;
+}
+
+.scan-check-cell {
+  display: grid;
+  place-items: center;
+  margin: 0;
+}
+
+.scan-check-cell input {
+  width: 15px;
+  height: 15px;
+  accent-color: #1261a6;
+}
+
+.scan-check-cell.mixed input {
+  outline: 2px solid #7ab2dc;
+  outline-offset: 1px;
+}
+
+.scan-row-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.scan-row-status svg {
+  flex: 0 0 auto;
+}
+
+.scan-row-title {
+  min-width: 0;
+}
+
+.scan-row-title strong,
+.scan-row-title small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-row-title strong {
+  color: #202632;
+  font-size: 13px;
+}
+
+.scan-row-title small {
+  margin-top: 2px;
+  color: #8793a3;
+  font-size: 11px;
+}
+
+.super-scan-row p {
+  overflow: hidden;
+  margin: 0;
+  color: #647184;
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.super-scan-row > small {
+  justify-self: end;
+  color: #697586;
+  font-size: 12px;
+}
+
+.scan-row-no-action {
+  justify-self: center;
+  color: #9aa6b5;
+  font-size: 12px;
+}
+
+.scan-repair-advice {
+  display: grid;
+  gap: 5px;
+  min-height: 72px;
+  max-height: 108px;
+  padding: 8px 10px;
+  border: 1px solid #c8ddeb;
+  border-radius: 5px;
+  background: #f6fbff;
+}
+
+.scan-repair-advice strong {
+  color: #0f4d7c;
+  font-size: 12px;
+}
+
+.scan-repair-advice pre {
+  overflow-y: auto;
+  margin: 0;
+  color: #334155;
+  font: 12px/1.45 Consolas, "Microsoft YaHei", monospace;
+  white-space: pre-wrap;
 }
 
 .system-panel {

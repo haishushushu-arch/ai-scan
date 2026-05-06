@@ -4,6 +4,7 @@ export type CommandName =
   | "run_installer_scan"
   | "run_quick_scan"
   | "run_quick_scan_streamed"
+  | "stop_quick_scan"
   | "get_public_settings"
   | "login"
   | "login_2fa"
@@ -68,6 +69,7 @@ export type ScanFinding = {
   severity: ScanSeverity;
   message: string;
   nextStep: string;
+  fixSuggestion?: string;
   evidence?: string;
 };
 
@@ -120,6 +122,7 @@ export type ScanProgressPhase =
   | "step_started"
   | "step_finished"
   | "finished"
+  | "canceled"
   | "failed";
 
 export type ScanProgressEvent = {
@@ -253,6 +256,7 @@ export const tauriApi = {
   runQuickScan: (request?: QuickScanRequest) => invokeCommand<QuickScanResult>("run_quick_scan", { request: request ?? null }),
   runQuickScanStreamed: (request?: QuickScanRequest) =>
     invokeCommand<QuickScanResult>("run_quick_scan_streamed", { request: request ?? null }),
+  stopQuickScan: () => invokeCommand<void>("stop_quick_scan"),
   getPublicSettings: () => invokeCommand<PublicSettings>("get_public_settings"),
   login: (request: LoginRequest) => invokeCommand<LoginResult>("login", { request }),
   login2fa: (request: Login2faRequest) => invokeCommand<LoginResult>("login_2fa", { request }),
