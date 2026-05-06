@@ -13,10 +13,13 @@
     "windows": [
       {
         "title": "ai-scan",
-        "width": 1180,
-        "height": 760,
-        "minWidth": 980,
-        "minHeight": 640
+        "width": 1200,
+        "height": 700,
+        "minWidth": 1200,
+        "minHeight": 700,
+        "maxWidth": 1200,
+        "maxHeight": 700,
+        "resizable": false
       }
     ],
     "security": {

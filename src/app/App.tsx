@@ -227,45 +227,47 @@ export function App() {
           </div>
         </header>
 
-        {activePage === "dashboard" && (
-          <Dashboard
-            account={account}
-            system={system}
-            scan={scan}
-            liveScan={liveScan}
-            scanRequest={scanRequest}
-            isScanning={isScanning}
-            onScanRequestChange={setScanRequest}
-            onRunScan={runQuickScan}
-          />
-        )}
-        {activePage === "account" && (
-          <AccountPage
-            account={account}
-            settings={settings}
-            onAccountChanged={refreshAccountData}
-          />
-        )}
-        {activePage === "apiKeys" && (
-          <ApiKeyPage
-            account={account}
-            apiKeys={apiKeys}
-            onKeysChanged={refreshAccountData}
-          />
-        )}
-        {activePage === "environment" && <EnvironmentPage system={system} />}
-        {activePage === "clients" && <ClientConfigPage />}
-        {activePage === "repairs" && <RepairPage />}
-        {activePage === "installers" && <InstallerPage />}
-        {activePage === "professional" && (
-          <ProfessionalPage
-            account={account}
-            system={system}
-            apiKeys={apiKeys}
-            scan={scan}
-            scanRequest={scanRequest}
-          />
-        )}
+        <div className="workspace-content">
+          {activePage === "dashboard" && (
+            <Dashboard
+              account={account}
+              system={system}
+              scan={scan}
+              liveScan={liveScan}
+              scanRequest={scanRequest}
+              isScanning={isScanning}
+              onScanRequestChange={setScanRequest}
+              onRunScan={runQuickScan}
+            />
+          )}
+          {activePage === "account" && (
+            <AccountPage
+              account={account}
+              settings={settings}
+              onAccountChanged={refreshAccountData}
+            />
+          )}
+          {activePage === "apiKeys" && (
+            <ApiKeyPage
+              account={account}
+              apiKeys={apiKeys}
+              onKeysChanged={refreshAccountData}
+            />
+          )}
+          {activePage === "environment" && <EnvironmentPage system={system} />}
+          {activePage === "clients" && <ClientConfigPage />}
+          {activePage === "repairs" && <RepairPage />}
+          {activePage === "installers" && <InstallerPage />}
+          {activePage === "professional" && (
+            <ProfessionalPage
+              account={account}
+              system={system}
+              apiKeys={apiKeys}
+              scan={scan}
+              scanRequest={scanRequest}
+            />
+          )}
+        </div>
       </main>
     </div>
   );
@@ -282,7 +284,7 @@ function Dashboard(props: {
   onRunScan: () => void;
 }) {
   return (
-    <section className="page-grid">
+    <section className="page-grid dashboard-page">
       <div className="primary-panel">
         <div>
           <span className="eyebrow">一键体检</span>
@@ -295,7 +297,7 @@ function Dashboard(props: {
         </button>
       </div>
 
-      <div className="panel">
+      <div className="panel scan-input-panel">
         <div className="panel-heading">
           <h2>体检输入</h2>
           <span className="badge info">真实扫描参数</span>
@@ -326,7 +328,7 @@ function Dashboard(props: {
         </div>
       </div>
 
-      <div className="status-grid">
+      <div className="status-grid dashboard-status">
         <StatusTile title="当前账号状态" value={accountValue(props.account)} detail={invokeDetail(props.account)} />
         <StatusTile title="系统信息" value={systemValue(props.system)} detail={invokeDetail(props.system)} />
         <StatusTile title="API 服务状态" value={scanValue(props.scan)} detail={invokeDetail(props.scan)} />
@@ -604,7 +606,7 @@ function ApiKeyPage({
   }
 
   return (
-    <section className="page-grid">
+    <section className="page-grid api-key-page">
       <div className="two-column">
         <div className="panel">
           <div className="panel-heading">
@@ -618,27 +620,36 @@ function ApiKeyPage({
           ) : keys.length === 0 ? (
             <EmptyState title="当前账户没有 API Key" description="可以在右侧创建一个新的 API Key。创建后完整 Key 只会显示一次。" />
           ) : (
-            <div className="table key-table">
-              {keys.map((key) => (
-                <div className="table-row" key={key.id}>
-                  <span>
-                    <strong>{key.name}</strong>
-                    <small>{key.quotaText ?? "未设置额度"} · {key.usageText ?? "未返回用量"}</small>
-                  </span>
-                  <code>{key.maskedKey}</code>
-                  <span>{apiKeyStatusText(key.status)}</span>
-                  <span>{formatOptionalDate(key.lastUsedAt)}</span>
-                  <button
-                    className="icon-button danger"
-                    type="button"
-                    title="删除 API Key"
-                    onClick={() => deleteKey(key.id)}
-                    disabled={busyAction === key.id}
-                  >
-                    {busyAction === key.id ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
-                  </button>
-                </div>
-              ))}
+            <div className="key-table-shell" role="table" aria-label="API Key 列表">
+              <div className="table-row table-head" role="row">
+                <span>名称 / 额度</span>
+                <span>Key</span>
+                <span>状态</span>
+                <span>最后使用</span>
+                <span>操作</span>
+              </div>
+              <div className="table-body" role="rowgroup">
+                {keys.map((key) => (
+                  <div className="table-row" role="row" key={key.id}>
+                    <span>
+                      <strong>{key.name}</strong>
+                      <small>{key.quotaText ?? "未设置额度"} · {key.usageText ?? "未返回用量"}</small>
+                    </span>
+                    <code>{key.maskedKey}</code>
+                    <span>{apiKeyStatusText(key.status)}</span>
+                    <span>{formatOptionalDate(key.lastUsedAt)}</span>
+                    <button
+                      className="icon-button danger"
+                      type="button"
+                      title="删除 API Key"
+                      onClick={() => deleteKey(key.id)}
+                      disabled={busyAction === key.id}
+                    >
+                      {busyAction === key.id ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -694,7 +705,7 @@ function ApiKeyPage({
 
 function EnvironmentPage({ system }: { system: InvokeResult<SystemProfile> | null }) {
   return (
-    <section className="page-grid">
+    <section className="page-grid professional-page">
       <div className="panel">
         <div className="panel-heading">
           <h2>本机环境</h2>
