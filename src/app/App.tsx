@@ -50,17 +50,27 @@ type PageId =
 type Icon = typeof Home;
 
 const navItems: Array<{ id: PageId; label: string; icon: Icon }> = [
-  { id: "dashboard", label: "首页体检", icon: Home },
+  { id: "dashboard", label: "首页", icon: Home },
   { id: "account", label: "我的账户", icon: CreditCard },
   { id: "apiKeys", label: "API Key", icon: KeyRound },
-  { id: "environment", label: "环境体检", icon: Stethoscope },
+  { id: "environment", label: "环境检测", icon: Stethoscope },
   { id: "clients", label: "客户端配置", icon: Code2 },
   { id: "repairs", label: "修复中心", icon: Wrench },
   { id: "installers", label: "环境安装", icon: PackageCheck },
   { id: "professional", label: "专业模式", icon: Bug },
 ];
 
+const appVersion = "v0.1.0";
 const pendingText = "等待接口适配/未登录";
+
+type EnvironmentTabId = "fullScan" | "system" | "network" | "installers";
+
+const environmentTabs: Array<{ id: EnvironmentTabId; label: string; icon: Icon }> = [
+  { id: "fullScan", label: "全盘扫描", icon: SearchCheck },
+  { id: "system", label: "系统环境", icon: Stethoscope },
+  { id: "network", label: "网络检测", icon: Activity },
+  { id: "installers", label: "软件安装", icon: PackageCheck },
+];
 
 type LiveScanStep = {
   id: string;
@@ -230,14 +240,11 @@ export function App() {
         <div className="workspace-content">
           {activePage === "dashboard" && (
             <Dashboard
-              account={account}
-              system={system}
-              scan={scan}
-              liveScan={liveScan}
-              scanRequest={scanRequest}
               isScanning={isScanning}
-              onScanRequestChange={setScanRequest}
-              onRunScan={runQuickScan}
+              onStartScan={() => {
+                setActivePage("environment");
+                void runQuickScan();
+              }}
             />
           )}
           {activePage === "account" && (
@@ -254,7 +261,17 @@ export function App() {
               onKeysChanged={refreshAccountData}
             />
           )}
-          {activePage === "environment" && <EnvironmentPage system={system} />}
+          {activePage === "environment" && (
+            <EnvironmentPage
+              system={system}
+              scan={scan}
+              liveScan={liveScan}
+              scanRequest={scanRequest}
+              isScanning={isScanning}
+              onScanRequestChange={setScanRequest}
+              onRunScan={runQuickScan}
+            />
+          )}
           {activePage === "clients" && <ClientConfigPage />}
           {activePage === "repairs" && <RepairPage />}
           {activePage === "installers" && <InstallerPage />}
@@ -274,68 +291,25 @@ export function App() {
 }
 
 function Dashboard(props: {
-  account: InvokeResult<AccountStatus> | null;
-  system: InvokeResult<SystemProfile> | null;
-  scan: InvokeResult<QuickScanResult> | null;
-  liveScan: LiveScanState;
-  scanRequest: { baseUrl: string; apiKey: string };
   isScanning: boolean;
-  onScanRequestChange: (value: { baseUrl: string; apiKey: string }) => void;
-  onRunScan: () => void;
+  onStartScan: () => void;
 }) {
   return (
-    <section className="page-grid dashboard-page">
-      <div className="primary-panel">
+    <section className="home-page">
+      <div className="home-banner">
         <div>
-          <span className="eyebrow">一键体检</span>
-          <h2>检查账号、API 和本机环境是否可用</h2>
-          <p>扫描会按 DNS、TCP、TLS、HTTP 和模型接口逐项执行，进度只来自真实检查事件。</p>
+          <div className="home-title-row">
+            <h2>AI-SCAN</h2>
+            <span className="version-badge">{appVersion}</span>
+          </div>
+          <strong>AI环境一键诊断</strong>
+          <p>一键扫描系统环境、网络环境、AI客户端和配置</p>
         </div>
-        <button className="primary-action" type="button" disabled={props.isScanning} onClick={props.onRunScan}>
-          {props.isScanning ? <Loader2 size={20} className="spin" /> : <Activity size={20} />}
-          <span>{props.isScanning ? "体检中" : "开始体检"}</span>
+        <button className="primary-action home-scan-button" type="button" disabled={props.isScanning} onClick={props.onStartScan}>
+          {props.isScanning ? <Loader2 size={20} className="spin" /> : <SearchCheck size={20} />}
+          <span>{props.isScanning ? "正在扫描" : "一键扫描"}</span>
         </button>
       </div>
-
-      <div className="panel scan-input-panel">
-        <div className="panel-heading">
-          <h2>体检输入</h2>
-          <span className="badge info">真实扫描参数</span>
-        </div>
-        <div className="scan-input-grid">
-          <label>
-            <span>API 地址</span>
-            <input
-              value={props.scanRequest.baseUrl}
-              onChange={(event) =>
-                props.onScanRequestChange({ ...props.scanRequest, baseUrl: event.target.value })
-              }
-              placeholder="https://www.msutools.cn"
-            />
-          </label>
-          <label>
-            <span>API Key，可留空</span>
-            <input
-              type="password"
-              value={props.scanRequest.apiKey}
-              onChange={(event) =>
-                props.onScanRequestChange({ ...props.scanRequest, apiKey: event.target.value })
-              }
-              placeholder="sk-..."
-              autoComplete="off"
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="status-grid dashboard-status">
-        <StatusTile title="当前账号状态" value={accountValue(props.account)} detail={invokeDetail(props.account)} />
-        <StatusTile title="系统信息" value={systemValue(props.system)} detail={invokeDetail(props.system)} />
-        <StatusTile title="API 服务状态" value={scanValue(props.scan)} detail={invokeDetail(props.scan)} />
-      </div>
-
-      <LiveScanPanel liveScan={props.liveScan} scan={props.scan} />
-      <ResultPanel scan={props.scan} />
     </section>
   );
 }
@@ -703,33 +677,159 @@ function ApiKeyPage({
   );
 }
 
-function EnvironmentPage({ system }: { system: InvokeResult<SystemProfile> | null }) {
+function EnvironmentPage(props: {
+  system: InvokeResult<SystemProfile> | null;
+  scan: InvokeResult<QuickScanResult> | null;
+  liveScan: LiveScanState;
+  scanRequest: { baseUrl: string; apiKey: string };
+  isScanning: boolean;
+  onScanRequestChange: (value: { baseUrl: string; apiKey: string }) => void;
+  onRunScan: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<EnvironmentTabId>("fullScan");
+  const networkChecks = props.scan?.state === "ok" ? props.scan.data.checks ?? [] : [];
+
   return (
-    <section className="page-grid professional-page">
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>本机环境</h2>
-          <span className="badge muted">{invokeDetail(system)}</span>
-        </div>
-        <dl className="detail-list">
-          <div>
-            <dt>操作系统</dt>
-            <dd>{system?.state === "ok" ? system.data.os : pendingText}</dd>
-          </div>
-          <div>
-            <dt>架构</dt>
-            <dd>{system?.state === "ok" ? system.data.architecture : pendingText}</dd>
-          </div>
-          <div>
-            <dt>Shell</dt>
-            <dd>{system?.state === "ok" ? system.data.shell ?? "接口未返回" : pendingText}</dd>
-          </div>
-        </dl>
+    <section className="environment-page">
+      <div className="env-tabs" role="tablist" aria-label="环境检测分类">
+        {environmentTabs.map((tab) => {
+          const IconComponent = tab.icon;
+          return (
+            <button
+              className={activeTab === tab.id ? "env-tab active" : "env-tab"}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <IconComponent size={16} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
-      <ChecklistPanel
-        title="待接入检测项"
-        items={["DNS/TCP/TLS/HTTP", "系统代理", "环境变量", "Node/Python/Git/curl/Docker", "系统时间和证书"]}
-      />
+
+      {activeTab === "fullScan" && (
+        <div className="env-tab-panel full-scan-panel" role="tabpanel">
+          <div className="panel scan-input-panel">
+            <div className="panel-heading">
+              <h2>全盘扫描</h2>
+              <span className="badge info">真实扫描参数</span>
+            </div>
+            <div className="scan-input-grid">
+              <label>
+                <span>API 地址</span>
+                <input
+                  value={props.scanRequest.baseUrl}
+                  onChange={(event) =>
+                    props.onScanRequestChange({ ...props.scanRequest, baseUrl: event.target.value })
+                  }
+                  placeholder="https://www.msutools.cn"
+                />
+              </label>
+              <label>
+                <span>API Key，可留空</span>
+                <input
+                  type="password"
+                  value={props.scanRequest.apiKey}
+                  onChange={(event) =>
+                    props.onScanRequestChange({ ...props.scanRequest, apiKey: event.target.value })
+                  }
+                  placeholder="sk-..."
+                  autoComplete="off"
+                />
+              </label>
+              <button className="primary-action compact" type="button" disabled={props.isScanning} onClick={props.onRunScan}>
+                {props.isScanning ? <Loader2 size={17} className="spin" /> : <SearchCheck size={17} />}
+                <span>{props.isScanning ? "扫描中" : "开始扫描"}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="status-grid environment-status">
+            <StatusTile title="系统信息" value={systemValue(props.system)} detail={invokeDetail(props.system)} />
+            <StatusTile title="网络接口" value={scanValue(props.scan)} detail={invokeDetail(props.scan)} />
+            <StatusTile title="扫描进度" value={`${Math.round(props.liveScan.progress)}%`} detail={`完成 ${props.liveScan.completed}/${props.liveScan.total}`} />
+          </div>
+
+          <LiveScanPanel liveScan={props.liveScan} scan={props.scan} />
+          <ResultPanel scan={props.scan} />
+        </div>
+      )}
+
+      {activeTab === "system" && (
+        <div className="env-tab-panel system-panel" role="tabpanel">
+          <div className="panel">
+            <div className="panel-heading">
+              <h2>本机环境</h2>
+              <span className="badge muted">{invokeDetail(props.system)}</span>
+            </div>
+            <dl className="detail-list">
+              <div>
+                <dt>操作系统</dt>
+                <dd>{props.system?.state === "ok" ? props.system.data.os : pendingText}</dd>
+              </div>
+              <div>
+                <dt>架构</dt>
+                <dd>{props.system?.state === "ok" ? props.system.data.architecture : pendingText}</dd>
+              </div>
+              <div>
+                <dt>Shell</dt>
+                <dd>{props.system?.state === "ok" ? props.system.data.shell ?? "接口未返回" : pendingText}</dd>
+              </div>
+            </dl>
+          </div>
+          <ChecklistPanel
+            title="系统环境检测项"
+            items={["系统代理", "环境变量", "Node/Python/Git/curl/Docker", "系统时间", "证书链"]}
+          />
+        </div>
+      )}
+
+      {activeTab === "network" && (
+        <div className="env-tab-panel network-panel" role="tabpanel">
+          <div className="panel">
+            <div className="panel-heading">
+              <h2>网络检测</h2>
+              <span className="badge muted">{props.scan?.state === "ok" ? "已有扫描结果" : "等待扫描"}</span>
+            </div>
+            {networkChecks.length > 0 ? (
+              <div className="check-result-grid network-results">
+                {networkChecks.map((check) => (
+                  <div className={`check-result ${check.status}`} key={check.id}>
+                    <strong>{check.title}</strong>
+                    <span>{check.message}</span>
+                    <small>{check.durationMs} ms</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="尚未检测网络" description="运行全盘扫描后，这里会显示 DNS、TCP、TLS、HTTP 和模型接口的真实结果。" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "installers" && (
+        <div className="env-tab-panel installers-panel" role="tabpanel">
+          <div className="panel">
+            <div className="panel-heading">
+              <h2>软件安装</h2>
+              <span className="badge info">计划阶段</span>
+            </div>
+            <div className="installer-grid">
+              {["Node.js LTS", "Git", "Python", "Docker Desktop", "WebView2", "VC++ Runtime", "证书/代理工具"].map((item) => (
+                <div className="installer-item" key={item}>
+                  <BookOpenCheck size={18} />
+                  <span>{item}</span>
+                  <small>等待检测接口</small>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -811,7 +911,7 @@ function ProfessionalPage(props: {
   }
 
   return (
-    <section className="page-grid">
+    <section className="page-grid professional-page">
       <div className="panel">
         <div className="panel-heading">
           <h2>专业模式</h2>

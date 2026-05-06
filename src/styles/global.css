@@ -193,38 +193,69 @@ button {
   gap: 10px;
 }
 
-.dashboard-page {
-  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.75fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+.home-page {
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
-.dashboard-page .primary-panel {
-  grid-column: 1 / 2;
+.home-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  min-height: 190px;
+  padding: 28px 32px;
+  border: 1px solid #cfd9e6;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
-.dashboard-page .scan-input-panel {
-  grid-column: 2 / 3;
+.home-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.dashboard-page .dashboard-status {
-  grid-column: 1 / -1;
+.home-title-row h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: 0;
 }
 
-.dashboard-page .scan-live-panel,
-.dashboard-page .panel:last-child,
-.dashboard-page .empty-state:last-child {
-  min-height: 0;
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid #cbd8e6;
+  border-radius: 999px;
+  background: #f6f9fc;
+  color: #526173;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.dashboard-page .scan-live-panel {
-  grid-column: 1 / 2;
+.home-banner strong {
+  display: block;
+  margin-top: 12px;
+  color: #0f4d7c;
+  font-size: 20px;
+  line-height: 1.25;
 }
 
-.dashboard-page .panel:last-child,
-.dashboard-page .empty-state:last-child {
-  grid-column: 2 / 3;
+.home-banner p {
+  margin: 10px 0 0;
+  color: #526173;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.home-scan-button {
+  min-width: 146px;
+  min-height: 42px;
 }
 
 .two-column {
@@ -248,14 +279,6 @@ button {
   gap: 16px;
   min-height: 0;
   padding: 13px 16px;
-}
-
-.dashboard-page .primary-panel {
-  align-items: center;
-}
-
-.dashboard-page .scan-input-panel {
-  padding: 12px;
 }
 
 .primary-panel h2,
@@ -706,13 +729,114 @@ button {
   font: inherit;
 }
 
-.dashboard-page .scan-input-grid {
-  grid-template-columns: 1fr;
-  gap: 6px;
+.environment-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.dashboard-page .scan-input-grid input {
+.env-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.env-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 112px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #465365;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.env-tab:hover {
+  background: #edf2f8;
+}
+
+.env-tab.active {
+  border-color: #c5dced;
+  background: #e4f1fb;
+  color: #0f4d7c;
+  font-weight: 600;
+}
+
+.env-tab-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.full-scan-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.75fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.full-scan-panel .scan-input-panel,
+.full-scan-panel .environment-status {
+  grid-column: 1 / -1;
+}
+
+.full-scan-panel .scan-live-panel {
+  grid-column: 1 / 2;
+  min-height: 0;
+}
+
+.full-scan-panel > .panel:last-child,
+.full-scan-panel > .empty-state:last-child {
+  grid-column: 2 / 3;
+  min-height: 0;
+}
+
+.full-scan-panel .scan-input-panel {
+  padding: 12px;
+}
+
+.full-scan-panel .scan-input-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.82fr) auto;
+  align-items: end;
+}
+
+.full-scan-panel .scan-input-grid input {
   min-height: 31px;
+}
+
+.system-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 10px;
+}
+
+.network-panel,
+.installers-panel {
+  height: 100%;
+}
+
+.network-panel .panel,
+.installers-panel .panel {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.network-results {
+  max-height: 100%;
 }
 
 .stack-form input:focus {
