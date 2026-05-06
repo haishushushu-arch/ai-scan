@@ -354,6 +354,7 @@ pub struct ApiKeySummary {
     pub name: String,
     pub key_masked: String,
     pub masked_key: String,
+    pub group_id: Option<i64>,
     pub created_at: Option<String>,
     pub last_used_at: Option<String>,
     pub expires_at: Option<String>,
@@ -382,6 +383,7 @@ impl ApiKeySummary {
             name,
             masked_key: key_masked.clone(),
             key_masked,
+            group_id: None,
             created_at,
             last_used_at,
             expires_at: None,
@@ -482,6 +484,18 @@ pub struct CreateApiKeyRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AvailableGroup {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub platform: Option<String>,
+    pub rate_multiplier: Option<f64>,
+    pub status: Option<String>,
+    pub subscription_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatedApiKey {
     pub key: ApiKeySummary,
     pub plaintext_key_once: Option<String>,
@@ -498,6 +512,10 @@ pub struct DeleteApiKeyRequest {
 pub struct ExportDiagnosticReportRequest {
     pub include_system_profile: Option<bool>,
     pub quick_scan: Option<QuickScanRequest>,
+    pub include_system_environment_scan: Option<bool>,
+    pub include_installer_scan: Option<bool>,
+    pub include_network_scan: Option<bool>,
+    pub network_scan: Option<NetworkScanRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -507,6 +525,9 @@ pub struct DiagnosticReport {
     pub app_version: String,
     pub system_profile: Option<SystemProfile>,
     pub quick_scan: Option<QuickScanResult>,
+    pub system_environment_scan: Option<SystemEnvironmentScanResult>,
+    pub installer_scan: Option<InstallerScanResult>,
+    pub network_scan: Option<NetworkScanResult>,
     pub account_status: AccountStatus,
     pub api_keys: ApiKeyList,
     pub redaction: ReportRedactionInfo,

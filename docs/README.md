@@ -1,6 +1,6 @@
 # AI Scan Documentation
 
-AI Scan is the msutools desktop client for checking local AI API readiness. It is designed to help ordinary users confirm whether account, API Key, balance, recharge, client configuration, and local environment are ready, while giving professional users inspectable diagnostic evidence.
+AI Scan is the msutools desktop client for checking local AI API readiness. It helps ordinary users inspect account, API Key, balance, recharge entry, local environment, network status, client configuration signals, and runtime readiness, while giving professional users inspectable diagnostic evidence.
 
 This documentation is split by audience. Every page must keep completed capability, planned capability, and capability that needs backend/interface adaptation separate.
 

@@ -751,7 +751,8 @@ button {
   font-size: 13px;
 }
 
-.stack-form input {
+.stack-form input,
+.stack-form select {
   width: 100%;
   min-height: 34px;
   padding: 7px 9px;
@@ -760,6 +761,12 @@ button {
   background: #ffffff;
   color: #202632;
   font: inherit;
+}
+
+.stack-form label small {
+  color: #697586;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .scan-input-grid {
@@ -1528,7 +1535,8 @@ button {
   max-height: 100%;
 }
 
-.stack-form input:focus {
+.stack-form input:focus,
+.stack-form select:focus {
   border-color: #4595cc;
   outline: 2px solid #d9edf9;
 }
@@ -1585,7 +1593,7 @@ button {
 }
 
 .key-table-shell .table-row {
-  grid-template-columns: minmax(180px, 1.2fr) minmax(140px, 0.8fr) 82px minmax(120px, 0.8fr) 40px;
+  grid-template-columns: minmax(170px, 1.2fr) minmax(126px, 0.74fr) minmax(76px, 0.42fr) 78px 40px;
 }
 
 .table-row strong,
@@ -1621,6 +1629,36 @@ button {
   border-color: #efc6c6;
   color: #a32626;
   background: #fffafa;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.confirm-dialog {
+  width: min(420px, calc(100vw - 48px));
+  padding: 14px;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.2);
+}
+
+.confirm-dialog p {
+  margin: 8px 0 0;
+  color: #415064;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.confirm-dialog code {
+  display: inline-block;
+  margin-top: 4px;
 }
 
 .notice {
@@ -1689,17 +1727,260 @@ button {
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .professional-page .panel:last-child {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
 
 .professional-page .log-grid {
-  max-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  padding-right: 3px;
+}
+
+.client-config-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.45fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.client-config-page .panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.client-config-list {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100% - 36px);
   overflow-y: auto;
   padding-right: 3px;
+}
+
+.client-config-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 70px;
+  align-items: center;
+  gap: 9px;
+  min-height: 74px;
+  padding: 9px;
+  border: 1px solid #e1e7ef;
+  border-radius: 5px;
+  background: #fbfcfe;
+}
+
+.client-config-item.ready {
+  border-color: #bce3ce;
+  background: #f2fbf6;
+}
+
+.client-config-item.attention {
+  border-color: #ead59d;
+  background: #fffaf0;
+}
+
+.client-config-item strong,
+.client-config-item p,
+.client-config-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.client-config-item strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.client-config-item p {
+  margin: 3px 0 0;
+  color: #415064;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.client-config-item small {
+  margin-top: 3px;
+  color: #697586;
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.client-config-side {
+  display: grid;
+  align-content: start;
+}
+
+.repair-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(116px, 0.34fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.repair-command-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.repair-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.repair-list-panel,
+.repair-plan-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.repair-table {
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.repair-row {
+  display: grid;
+  grid-template-columns: 38px 86px minmax(190px, 0.9fr) minmax(0, 1fr) 76px;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #edf1f5;
+  background: #ffffff;
+}
+
+.repair-head {
+  min-height: 34px;
+  background: #f4f7fb;
+  color: #566273;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.repair-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.repair-row:last-child {
+  border-bottom: 0;
+}
+
+.repair-row.error,
+.repair-row.high {
+  background: #fff5f5;
+}
+
+.repair-row.warning,
+.repair-row.medium,
+.repair-row.low {
+  background: #fffaf0;
+}
+
+.repair-source {
+  color: #566273;
+  font-size: 12px;
+}
+
+.repair-row strong,
+.repair-row p,
+.repair-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repair-row strong {
+  display: block;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.repair-row p {
+  margin: 2px 0 0;
+  color: #647184;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.repair-row small {
+  display: -webkit-box;
+  color: #415064;
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.repair-body > .empty-state {
+  border: 0;
+  border-radius: 0;
+}
+
+.repair-plan-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.repair-plan-panel pre {
+  max-height: 100%;
+}
+
+.installer-page {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.42fr) minmax(0, 1fr) minmax(280px, 0.48fr);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.installer-page .panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.installer-summary-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.installer-summary-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.installer-main-list,
+.installer-main-finding {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.installer-main-list .installer-status-grid,
+.installer-main-finding .finding-list {
+  max-height: 100%;
 }
 
 .check-item,

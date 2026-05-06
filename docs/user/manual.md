@@ -123,9 +123,9 @@ Planned checks include:
 
 ### Client Configuration
 
-Status: Planned.
+Status: Partially available, read-only.
 
-The product goal is to help configure common AI tools such as Cursor, VS Code, Cline, Continue, Cherry Studio, Open WebUI, Codex CLI, and Claude Code CLI.
+The current page summarizes OPENAI environment variables, the API target entered in full scan, and basic tool readiness for common AI clients. It does not yet edit Cursor, VS Code, Cline, Continue, Cherry Studio, Open WebUI, Codex CLI, or Claude Code CLI configuration files.
 
 The safe rule is read-only first. Before AI Scan writes any client configuration, the implementation must show:
 
@@ -136,7 +136,9 @@ The safe rule is read-only first. Before AI Scan writes any client configuration
 
 ### Repair Center
 
-Status: Planned.
+Status: Partially available, advice-only.
+
+The repair center aggregates real Findings from full scan, system environment, network diagnostics, and environment installation checks. It can generate copyable handling suggestions for selected findings.
 
 The repair center should eventually classify fixes as:
 
@@ -145,13 +147,13 @@ The repair center should eventually classify fixes as:
 - Manual only.
 - Needs support.
 
-Current behavior: repair UI is a placeholder. No one-click repair command should be advertised as available until the backend returns repair plans and the UI confirms writes.
+Current behavior: repair suggestions are read-only text. No automatic repair command should be advertised as available until the backend returns repair plans and the UI confirms writes.
 
 ### Environment Installation
 
-Status: Planned.
+Status: Partially available.
 
-The page lists common dependencies such as Node.js LTS, Git, Python, Docker Desktop, WebView2, and VC++ Runtime, but installer commands are not implemented yet.
+The page detects common dependencies such as Node.js LTS, npm, Git, curl, Python, Docker Desktop, WebView2, and VC++ Runtime, then shows installation suggestions. Installer commands are not implemented yet.
 
 ## Recommended User Workflow
 

@@ -12,6 +12,7 @@ export type CommandName =
   | "logout"
   | "get_account_status"
   | "list_api_keys"
+  | "list_available_groups"
   | "create_api_key"
   | "delete_api_key"
   | "export_diagnostic_report";
@@ -45,6 +46,7 @@ export type ApiKeySummary = {
   name: string;
   maskedKey: string;
   keyMasked?: string;
+  groupId?: number | null;
   status: ApiKeyStatus;
   createdAt?: string;
   lastUsedAt?: string;
@@ -246,6 +248,16 @@ export type CreateApiKeyRequest = {
   rateLimit7d?: number;
 };
 
+export type AvailableGroup = {
+  id: number;
+  name: string;
+  description?: string | null;
+  platform?: string | null;
+  rateMultiplier?: number | null;
+  status?: string | null;
+  subscriptionType?: string | null;
+};
+
 export type CreatedApiKey = {
   key: ApiKeySummary;
   plaintextKeyOnce?: string;
@@ -326,6 +338,7 @@ export const tauriApi = {
     if (result.state !== "ok") return result;
     return { state: "ok", data: result.data.keys };
   },
+  listAvailableGroups: () => invokeCommand<AvailableGroup[]>("list_available_groups"),
   createApiKey: (request: CreateApiKeyRequest) => invokeCommand<CreatedApiKey>("create_api_key", { request }),
   deleteApiKey: (id: string) => invokeCommand<string>("delete_api_key", { request: { id } }),
   exportDiagnosticReport: (quickScan?: QuickScanRequest) =>
@@ -333,6 +346,13 @@ export const tauriApi = {
       request: {
         includeSystemProfile: true,
         quickScan: quickScan ?? {
+          baseUrl: "https://www.msutools.cn",
+          timeoutMs: 8000,
+        },
+        includeSystemEnvironmentScan: true,
+        includeInstallerScan: true,
+        includeNetworkScan: true,
+        networkScan: quickScan ?? {
           baseUrl: "https://www.msutools.cn",
           timeoutMs: 8000,
         },

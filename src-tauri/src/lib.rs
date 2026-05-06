@@ -25,6 +25,7 @@ pub fn run() {
             commands::logout,
             commands::get_account_status,
             commands::list_api_keys,
+            commands::list_available_groups,
             commands::create_api_key,
             commands::delete_api_key,
             commands::export_diagnostic_report,

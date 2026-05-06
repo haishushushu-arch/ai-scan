@@ -6,7 +6,7 @@ use tauri::Emitter;
 use url::Url;
 
 use crate::core::models::{
-    AccountStatus, ApiKeyList, CreatedApiKey, CreateApiKeyRequest, DeleteApiKeyRequest,
+    AccountStatus, ApiKeyList, AvailableGroup, CreatedApiKey, CreateApiKeyRequest, DeleteApiKeyRequest,
     DiagnosticReport, ExportDiagnosticReportRequest, InstallerScanResult, Login2faRequest,
     LoginRequest, LoginResult, NetworkScanRequest, NetworkScanResult, PublicSettings,
     QuickScanRequest, QuickScanResult, ScanCheck, ScanOverallStatus, ScanProgressEvent,
@@ -100,6 +100,11 @@ pub async fn get_account_status() -> Result<AccountStatus, String> {
 #[tauri::command]
 pub async fn list_api_keys() -> Result<ApiKeyList, String> {
     msutools::list_api_keys().await.map_err(to_command_error)
+}
+
+#[tauri::command]
+pub async fn list_available_groups() -> Result<Vec<AvailableGroup>, String> {
+    msutools::available_groups().await.map_err(to_command_error)
 }
 
 #[tauri::command]

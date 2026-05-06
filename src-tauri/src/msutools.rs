@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::core::models::{
-    AccountBalance, AccountStatus, AccountUser, ApiKeyList, ApiKeySummary, CreatedApiKey,
+    AccountBalance, AccountStatus, AccountUser, ApiKeyList, ApiKeySummary, AvailableGroup, CreatedApiKey,
     CreateApiKeyRequest, DeleteApiKeyRequest, Login2faRequest, LoginRequest, LoginResult,
     PublicSettings,
 };
@@ -92,6 +92,7 @@ struct ApiKeyDto {
     id: i64,
     key: Option<String>,
     name: Option<String>,
+    group_id: Option<i64>,
     status: Option<String>,
     created_at: Option<String>,
     last_used_at: Option<String>,
@@ -239,6 +240,16 @@ pub async fn list_api_keys() -> anyhow::Result<ApiKeyList> {
     })
 }
 
+pub async fn available_groups() -> anyhow::Result<Vec<AvailableGroup>> {
+    let session = require_session()?;
+    let client = authed_client(&session.access_token)?;
+    let response = client.get(api_url("/groups/available")).send().await?;
+    if response.status().as_u16() == 401 {
+        anyhow::bail!("The stored msutools session expired. Please log in again.");
+    }
+    unwrap_response(response).await
+}
+
 pub async fn create_api_key(request: CreateApiKeyRequest) -> anyhow::Result<CreatedApiKey> {
     let session = require_session()?;
     let client = authed_client(&session.access_token)?;
@@ -271,7 +282,7 @@ pub async fn delete_api_key(request: DeleteApiKeyRequest) -> anyhow::Result<Stri
     let client = authed_client(&session.access_token)?;
     let path = format!("/keys/{}", request.id);
     let response = client.delete(api_url(&path)).send().await?;
-    let _: Value = unwrap_response(response).await?;
+    unwrap_empty_response(response).await?;
     Ok("API key deleted.".to_string())
 }
 
@@ -311,13 +322,50 @@ async fn unwrap_response<T: DeserializeOwned>(response: reqwest::Response) -> an
         anyhow::bail!(
             "msutools API error {}: {}",
             envelope.code.as_display(),
-            envelope.message.unwrap_or_else(|| "Unknown error".to_string())
+            redaction::redact_secret(&envelope.message.unwrap_or_else(|| "Unknown error".to_string()))
         );
     }
 
     envelope
         .data
         .ok_or_else(|| anyhow::anyhow!("msutools API returned an empty data field"))
+}
+
+async fn unwrap_empty_response(response: reqwest::Response) -> anyhow::Result<()> {
+    let status = response.status();
+    if status.as_u16() == 204 {
+        return Ok(());
+    }
+
+    let text = response.text().await?;
+    if !status.is_success() {
+        anyhow::bail!(
+            "msutools request failed with HTTP {}: {}",
+            status.as_u16(),
+            redaction::redact_secret(&text.chars().take(240).collect::<String>())
+        );
+    }
+
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+
+    let envelope: ApiResponse<Value> = serde_json::from_str(&text).map_err(|error| {
+        anyhow::anyhow!(
+            "msutools response was not a standard JSON envelope: {error}; preview={}",
+            redaction::redact_secret(&text.chars().take(240).collect::<String>())
+        )
+    })?;
+
+    if !envelope.code.is_success() {
+        anyhow::bail!(
+            "msutools API error {}: {}",
+            envelope.code.as_display(),
+            redaction::redact_secret(&envelope.message.unwrap_or_else(|| "Unknown error".to_string()))
+        );
+    }
+
+    Ok(())
 }
 
 fn authed_client(access_token: &str) -> anyhow::Result<reqwest::Client> {
@@ -377,6 +425,7 @@ fn api_key_from_dto(key: ApiKeyDto) -> ApiKeySummary {
         key.last_used_at,
     );
     summary.expires_at = key.expires_at;
+    summary.group_id = key.group_id;
     summary.quota_text = key.quota.map(|value| {
         if value <= 0.0 {
             "不限额".to_string()

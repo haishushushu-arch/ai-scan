@@ -27,10 +27,10 @@ import {
 import {
   AccountStatus,
   ApiKeySummary,
+  AvailableGroup,
   DiagnosticReport,
   InstallerScanResult,
   InvokeResult,
-  NetworkHttpProbe,
   NetworkScanResult,
   NetworkServerIp,
   PublicSettings,
@@ -43,7 +43,7 @@ import {
   listenTauriEvent,
   tauriApi,
 } from "../lib/tauri";
-import { apiKeyStatusText, formatOptionalDate, severityLabel, statusText } from "../lib/format";
+import { apiKeyStatusText, severityLabel } from "../lib/format";
 
 type PageId =
   | "dashboard"
@@ -105,6 +105,19 @@ type FullScanRow = LiveScanStep & {
   finding?: ScanFinding;
 };
 
+type RepairSource = "全盘扫描" | "系统环境" | "网络检测" | "软件安装";
+
+type RepairItem = {
+  id: string;
+  source: RepairSource;
+  title: string;
+  severity: ScanFinding["severity"];
+  message: string;
+  nextStep: string;
+  fixSuggestion?: string;
+  evidence?: string;
+};
+
 const defaultScanSteps: LiveScanStep[] = [
   { id: "dns", title: "DNS 解析", state: "pending", message: "等待检查域名是否能解析。" },
   { id: "tcp", title: "TCP 连接", state: "pending", message: "等待检查端口是否能连通。" },
@@ -132,6 +145,7 @@ export function App() {
   const [systemScan, setSystemScan] = useState<InvokeResult<SystemEnvironmentScanResult> | null>(null);
   const [installerScan, setInstallerScan] = useState<InvokeResult<InstallerScanResult> | null>(null);
   const [networkScan, setNetworkScan] = useState<InvokeResult<NetworkScanResult> | null>(null);
+  const [availableGroups, setAvailableGroups] = useState<InvokeResult<AvailableGroup[]> | null>(null);
   const [liveScan, setLiveScan] = useState<LiveScanState>(initialLiveScan);
   const [scanRequest, setScanRequest] = useState({ baseUrl: "https://www.msutools.cn", apiKey: "" });
   const [isScanning, setIsScanning] = useState(false);
@@ -140,12 +154,14 @@ export function App() {
   const [isNetworkScanning, setIsNetworkScanning] = useState(false);
 
   async function refreshAccountData() {
-    const [nextAccount, nextKeys] = await Promise.all([
+    const [nextAccount, nextKeys, nextGroups] = await Promise.all([
       tauriApi.getAccountStatus(),
       tauriApi.listApiKeys(),
+      tauriApi.listAvailableGroups(),
     ]);
     setAccount(nextAccount);
     setApiKeys(nextKeys);
+    setAvailableGroups(nextGroups);
   }
 
   async function runSystemEnvironmentScan() {
@@ -329,6 +345,7 @@ export function App() {
             <ApiKeyPage
               account={account}
               apiKeys={apiKeys}
+              availableGroups={availableGroups}
               onKeysChanged={refreshAccountData}
             />
           )}
@@ -353,15 +370,41 @@ export function App() {
               onRunNetworkScan={runNetworkScan}
             />
           )}
-          {activePage === "clients" && <ClientConfigPage />}
-          {activePage === "repairs" && <RepairPage />}
-          {activePage === "installers" && <InstallerPage />}
+          {activePage === "clients" && (
+            <ClientConfigPage
+              system={system}
+              scanRequest={scanRequest}
+            />
+          )}
+          {activePage === "repairs" && (
+            <RepairPage
+              scan={scan}
+              systemScan={systemScan}
+              networkScan={networkScan}
+              installerScan={installerScan}
+              isScanning={isScanning || isSystemScanning || isNetworkScanning || isInstallerScanning}
+              onRunFullScan={runQuickScan}
+              onRunSystemScan={runSystemEnvironmentScan}
+              onRunNetworkScan={runNetworkScan}
+              onRunInstallerScan={runInstallerScan}
+            />
+          )}
+          {activePage === "installers" && (
+            <InstallerPage
+              installerScan={installerScan}
+              isInstallerScanning={isInstallerScanning}
+              onRunInstallerScan={runInstallerScan}
+            />
+          )}
           {activePage === "professional" && (
             <ProfessionalPage
               account={account}
               system={system}
               apiKeys={apiKeys}
               scan={scan}
+              systemScan={systemScan}
+              networkScan={networkScan}
+              installerScan={installerScan}
               scanRequest={scanRequest}
             />
           )}
@@ -606,20 +649,31 @@ function AccountPage({
 function ApiKeyPage({
   account,
   apiKeys,
+  availableGroups,
   onKeysChanged,
 }: {
   account: InvokeResult<AccountStatus> | null;
   apiKeys: InvokeResult<ApiKeySummary[]> | null;
+  availableGroups: InvokeResult<AvailableGroup[]> | null;
   onKeysChanged: () => Promise<void>;
 }) {
   const keys = apiKeys?.state === "ok" ? apiKeys.data : [];
+  const groups = availableGroups?.state === "ok" ? availableGroups.data : [];
   const loggedIn = account?.state === "ok" && account.data.loginState === "logged_in";
   const [name, setName] = useState("默认 API Key");
+  const [groupId, setGroupId] = useState("");
   const [quota, setQuota] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<ApiKeySummary | null>(null);
+
+  useEffect(() => {
+    if (!groupId && groups.length > 0) {
+      setGroupId(String(groups[0].id));
+    }
+  }, [groupId, groups]);
 
   async function createKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -629,6 +683,7 @@ function ApiKeyPage({
     try {
       const result = await tauriApi.createApiKey({
         name,
+        groupId: groupId ? Number(groupId) : undefined,
         quota: quota ? Number(quota) : undefined,
         expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
       });
@@ -644,16 +699,17 @@ function ApiKeyPage({
     }
   }
 
-  async function deleteKey(id: string) {
-    setBusyAction(id);
+  async function deleteKey(key: ApiKeySummary) {
+    setBusyAction(`delete-${key.id}`);
     setMessage(null);
     try {
-      const result = await tauriApi.deleteApiKey(id);
+      const result = await tauriApi.deleteApiKey(key.id);
       if (result.state !== "ok") {
         setMessage(result.message);
         return;
       }
       setMessage("API Key 已删除。");
+      setDeleteCandidate(null);
       await onKeysChanged();
     } finally {
       setBusyAction(null);
@@ -679,8 +735,8 @@ function ApiKeyPage({
               <div className="table-row table-head" role="row">
                 <span>名称 / 额度</span>
                 <span>Key</span>
+                <span>分组</span>
                 <span>状态</span>
-                <span>最后使用</span>
                 <span>操作</span>
               </div>
               <div className="table-body" role="rowgroup">
@@ -691,16 +747,16 @@ function ApiKeyPage({
                       <small>{key.quotaText ?? "未设置额度"} · {key.usageText ?? "未返回用量"}</small>
                     </span>
                     <code>{key.maskedKey}</code>
+                    <span>{groupNameForKey(key, groups)}</span>
                     <span>{apiKeyStatusText(key.status)}</span>
-                    <span>{formatOptionalDate(key.lastUsedAt)}</span>
                     <button
                       className="icon-button danger"
                       type="button"
-                      title="删除 API Key"
-                      onClick={() => deleteKey(key.id)}
-                      disabled={busyAction === key.id}
+                      title="删除 API Key，需要二次确认"
+                      onClick={() => setDeleteCandidate(key)}
+                      disabled={busyAction === `delete-${key.id}`}
                     >
-                      {busyAction === key.id ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                      {busyAction === `delete-${key.id}` ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
                     </button>
                   </div>
                 ))}
@@ -720,6 +776,26 @@ function ApiKeyPage({
               <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={60} />
             </label>
             <label>
+              <span>可用分组</span>
+              <select
+                value={groupId}
+                onChange={(event) => setGroupId(event.target.value)}
+                disabled={!loggedIn || groups.length === 0}
+                required={groups.length > 0}
+              >
+                {groups.length === 0 ? (
+                  <option value="">未读取到可用分组</option>
+                ) : (
+                  groups.map((group) => (
+                    <option value={group.id} key={group.id}>
+                      {group.name} · {group.platform ?? "通用"} · {group.status ?? "unknown"}
+                    </option>
+                  ))
+                )}
+              </select>
+              <small>Key 必须绑定可用分组，否则网关可能返回 “API Key is not assigned to any group”。</small>
+            </label>
+            <label>
               <span>额度 USD，可留空</span>
               <input
                 inputMode="decimal"
@@ -737,11 +813,14 @@ function ApiKeyPage({
                 placeholder="留空表示不过期"
               />
             </label>
-            <button className="primary-action compact" type="submit" disabled={!loggedIn || busyAction === "create" || !name.trim()}>
+            <button className="primary-action compact" type="submit" disabled={!loggedIn || busyAction === "create" || !name.trim() || groups.length === 0}>
               {busyAction === "create" ? <Loader2 size={17} className="spin" /> : <Plus size={17} />}
               <span>创建 API Key</span>
             </button>
           </form>
+          {availableGroups?.state !== "ok" && loggedIn && (
+            <Notice kind="warning" text={availableGroups?.message ?? "正在读取可用分组。读取失败时不会创建无分组 Key。"} />
+          )}
           {createdKey && (
             <div className="secret-once">
               <div>
@@ -754,6 +833,30 @@ function ApiKeyPage({
           {message && <p className="form-message">{message}</p>}
         </div>
       </div>
+      {deleteCandidate && (
+        <div className="confirm-overlay" role="dialog" aria-modal="true" aria-label="确认删除 API Key">
+          <div className="confirm-dialog">
+            <div className="panel-heading">
+              <h2>确认删除 API Key</h2>
+              <span className="badge error">高风险操作</span>
+            </div>
+            <p>
+              删除后客户端将无法继续使用这个 Key：<strong>{deleteCandidate.name}</strong>
+              <br />
+              <code>{deleteCandidate.maskedKey}</code>
+            </p>
+            <div className="button-row">
+              <button className="danger-action compact" type="button" onClick={() => deleteKey(deleteCandidate)} disabled={busyAction === `delete-${deleteCandidate.id}`}>
+                {busyAction === `delete-${deleteCandidate.id}` ? <Loader2 size={17} className="spin" /> : <Trash2 size={17} />}
+                <span>确认删除</span>
+              </button>
+              <button className="secondary-action compact" type="button" onClick={() => setDeleteCandidate(null)} disabled={busyAction === `delete-${deleteCandidate.id}`}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -911,7 +1014,7 @@ function EnvironmentPage(props: {
                   onClick={() => showRepairPlan(repairTargetRows)}
                 >
                   <Wrench size={17} />
-                  <span>一键修复</span>
+                  <span>处理建议</span>
                 </button>
               </div>
             </div>
@@ -1021,7 +1124,7 @@ function EnvironmentPage(props: {
                         onClick={() => showRepairPlan([row])}
                       >
                         <Wrench size={14} />
-                        <span>修复</span>
+                        <span>建议</span>
                       </button>
                     ) : (
                       <span className="scan-row-no-action">-</span>
@@ -1334,54 +1437,313 @@ function EnvironmentPage(props: {
   );
 }
 
-function ClientConfigPage() {
+function ClientConfigPage({
+  system,
+  scanRequest,
+}: {
+  system: InvokeResult<SystemProfile> | null;
+  scanRequest: { baseUrl: string; apiKey: string };
+}) {
+  const env = system?.state === "ok" ? system.data.environment ?? [] : [];
+  const tools = system?.state === "ok" ? system.data.tools ?? [] : [];
+  const detectedConfig = buildClientConfigItems(env, tools, scanRequest);
+  const readyCount = detectedConfig.filter((item) => item.status === "ready").length;
+
   return (
-    <section className="page-grid">
-      <ChecklistPanel
-        title="客户端配置"
-        items={["Cursor", "VS Code", "Cline", "Continue", "Cherry Studio", "Open WebUI", "Codex/Claude Code CLI"]}
-      />
+    <section className="client-config-page">
       <div className="panel">
         <div className="panel-heading">
-          <h2>写入策略</h2>
+          <h2>客户端配置</h2>
+          <span className={readyCount > 0 ? "badge success" : "badge warning"}>
+            {readyCount > 0 ? `${readyCount} 项可用` : "需要配置"}
+          </span>
+        </div>
+        <div className="client-config-list">
+          {detectedConfig.map((item) => (
+            <article className={`client-config-item ${item.status}`} key={item.id}>
+              <div className="scan-step-icon">{stepIcon(item.status === "ready" ? "pass" : item.status === "attention" ? "warn" : "skipped")}</div>
+              <div>
+                <strong>{item.name}</strong>
+                <p>{item.message}</p>
+                <small>{item.detail}</small>
+              </div>
+              <span className={item.status === "ready" ? "mini-badge success" : item.status === "attention" ? "mini-badge warning" : "mini-badge muted"}>
+                {item.status === "ready" ? "已识别" : item.status === "attention" ? "待配置" : "未检测"}
+              </span>
+            </article>
+          ))}
+        </div>
+      </div>
+      <div className="panel client-config-side">
+        <div className="panel-heading">
+          <h2>当前 API 目标</h2>
           <span className="badge info">只读优先</span>
         </div>
-        <p className="muted-text">发现配置文件后默认只读展示。任何写入都需要 Rust 侧生成预览、备份路径和确认流程。</p>
-      </div>
-    </section>
-  );
-}
-
-function RepairPage() {
-  return (
-    <section className="page-grid">
-      <ChecklistPanel title="修复中心" items={["可自动修复", "需要确认", "只能手动处理", "修复后复检"]} />
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>当前状态</h2>
-          <span className="badge muted">等待扫描结果</span>
-        </div>
-        <p className="muted-text">修复动作必须来自真实 Finding 和 Repair Plan，不能边扫边改。</p>
-      </div>
-    </section>
-  );
-}
-
-function InstallerPage() {
-  return (
-    <section className="panel">
-      <div className="panel-heading">
-        <h2>环境安装</h2>
-        <span className="badge info">计划阶段</span>
-      </div>
-      <div className="installer-grid">
-        {["Node.js LTS", "Git", "Python", "Docker Desktop", "WebView2", "VC++ Runtime", "证书/代理工具"].map((item) => (
-          <div className="installer-item" key={item}>
-            <BookOpenCheck size={18} />
-            <span>{item}</span>
-            <small>等待检测接口</small>
+        <dl className="detail-list">
+          <div>
+            <dt>Base URL</dt>
+            <dd>{scanRequest.baseUrl || "未填写"}</dd>
           </div>
-        ))}
+          <div>
+            <dt>API Key</dt>
+            <dd>{scanRequest.apiKey ? "已填写，界面不会明文展示" : "未填写"}</dd>
+          </div>
+        </dl>
+        <p className="muted-text">本页只读取环境变量和常用命令状态。自动写入客户端配置必须先实现备份、预览和确认流程。</p>
+      </div>
+    </section>
+  );
+}
+
+function RepairPage({
+  scan,
+  systemScan,
+  networkScan,
+  installerScan,
+  isScanning,
+  onRunFullScan,
+  onRunSystemScan,
+  onRunNetworkScan,
+  onRunInstallerScan,
+}: {
+  scan: InvokeResult<QuickScanResult> | null;
+  systemScan: InvokeResult<SystemEnvironmentScanResult> | null;
+  networkScan: InvokeResult<NetworkScanResult> | null;
+  installerScan: InvokeResult<InstallerScanResult> | null;
+  isScanning: boolean;
+  onRunFullScan: () => void;
+  onRunSystemScan: () => void;
+  onRunNetworkScan: () => void;
+  onRunInstallerScan: () => void;
+}) {
+  const repairItems = useMemo(
+    () => buildRepairItems(scan, systemScan, networkScan, installerScan),
+    [scan, systemScan, networkScan, installerScan],
+  );
+  const [selectedRepairIds, setSelectedRepairIds] = useState<Set<string>>(new Set());
+  const [repairPlan, setRepairPlan] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const allSelected = repairItems.length > 0 && repairItems.every((item) => selectedRepairIds.has(item.id));
+  const selectedItems = repairItems.filter((item) => selectedRepairIds.has(item.id));
+  const planItems = selectedItems.length > 0 ? selectedItems : repairItems;
+
+  useEffect(() => {
+    setSelectedRepairIds((current) => {
+      const allowed = new Set(repairItems.map((item) => item.id));
+      const next = new Set([...current].filter((id) => allowed.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [repairItems.map((item) => item.id).join("|")]);
+
+  function toggleRepairItem(id: string) {
+    setSelectedRepairIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllRepairItems() {
+    setSelectedRepairIds((current) => {
+      if (repairItems.length > 0 && repairItems.every((item) => current.has(item.id))) {
+        return new Set();
+      }
+      return new Set(repairItems.map((item) => item.id));
+    });
+  }
+
+  function generateRepairPlan(items: RepairItem[]) {
+    if (items.length === 0) {
+      setRepairPlan("当前没有真实扫描返回的可处理问题。");
+      return;
+    }
+    setRepairPlan(items.map((item, index) => repairPlanLine(item, index)).join("\n"));
+  }
+
+  async function copyRepairPlan() {
+    if (!repairPlan) return;
+    try {
+      await navigator.clipboard.writeText(repairPlan);
+      setCopyMessage("修复建议已复制。");
+    } catch {
+      setCopyMessage("当前环境不允许自动复制，请手动选择文本。");
+    }
+  }
+
+  return (
+    <section className="repair-page">
+      <div className="panel repair-command-panel">
+        <div className="panel-heading">
+          <h2>修复中心</h2>
+          <span className={repairItems.length > 0 ? "badge warning" : "badge success"}>
+            {repairItems.length > 0 ? `${repairItems.length} 项待处理` : "暂无问题"}
+          </span>
+        </div>
+        <div className="repair-actions">
+          <button className="primary-action compact" type="button" onClick={() => generateRepairPlan(planItems)} disabled={repairItems.length === 0}>
+            <Wrench size={17} />
+            <span>生成修复建议</span>
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onRunFullScan} disabled={isScanning}>
+            <SearchCheck size={17} />
+            <span>全盘复检</span>
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onRunSystemScan} disabled={isScanning}>
+            <Stethoscope size={17} />
+            <span>系统复检</span>
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onRunNetworkScan} disabled={isScanning}>
+            <Activity size={17} />
+            <span>网络复检</span>
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onRunInstallerScan} disabled={isScanning}>
+            <PackageCheck size={17} />
+            <span>安装复检</span>
+          </button>
+        </div>
+        <p className="muted-text">这里只基于真实扫描结果生成修复建议；自动改系统配置前必须有备份和确认流程。</p>
+      </div>
+
+      <div className="panel repair-list-panel">
+        <div className="repair-table" role="table" aria-label="修复项列表">
+          <div className="repair-row repair-head" role="row">
+            <label className="scan-check-cell">
+              <input type="checkbox" checked={allSelected} onChange={toggleAllRepairItems} />
+            </label>
+            <span>来源</span>
+            <span>问题</span>
+            <span>建议</span>
+            <span>操作</span>
+          </div>
+          <div className="repair-body" role="rowgroup">
+            {repairItems.length > 0 ? (
+              repairItems.map((item) => (
+                <article className={`repair-row ${item.severity}`} role="row" key={item.id}>
+                  <label className="scan-check-cell">
+                    <input
+                      type="checkbox"
+                      checked={selectedRepairIds.has(item.id)}
+                      onChange={() => toggleRepairItem(item.id)}
+                      aria-label={`选择 ${item.title}`}
+                    />
+                  </label>
+                  <span className="repair-source">{item.source}</span>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.message}</p>
+                  </div>
+                  <small>{item.fixSuggestion ?? item.nextStep}</small>
+                  <button className="secondary-action tiny" type="button" onClick={() => generateRepairPlan([item])}>
+                    <Wrench size={14} />
+                    <span>建议</span>
+                  </button>
+                </article>
+              ))
+            ) : (
+              <EmptyState title="没有待处理问题" description="当前全盘、系统、网络和安装扫描没有返回需要处理的 Finding。" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {repairPlan && (
+        <div className="panel repair-plan-panel">
+          <div className="panel-heading">
+            <h2>修复建议</h2>
+            <button className="secondary-action tiny" type="button" onClick={copyRepairPlan}>
+              <Copy size={14} />
+              <span>复制</span>
+            </button>
+          </div>
+          <pre>{repairPlan}</pre>
+          {copyMessage && <p className="form-message compact-message">{copyMessage}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InstallerPage({
+  installerScan,
+  isInstallerScanning,
+  onRunInstallerScan,
+}: {
+  installerScan: InvokeResult<InstallerScanResult> | null;
+  isInstallerScanning: boolean;
+  onRunInstallerScan: () => void;
+}) {
+  const installerItems = installerScan?.state === "ok" ? installerScan.data.items : [];
+  const installerFindings = installerScan?.state === "ok" ? installerScan.data.findings : [];
+  const missingCount = installerItems.filter((item) => item.status === "missing").length;
+  const attentionCount = installerItems.filter((item) => item.status === "needs_attention").length;
+  const installedCount = installerItems.filter((item) => item.status === "installed").length;
+
+  return (
+    <section className="installer-page">
+      <div className="panel installer-summary-card">
+        <div className="panel-heading">
+          <h2>环境安装</h2>
+          <span className={installerScan?.state === "ok" ? statusBadgeClass(installerScan.data.status) : "badge muted"}>
+            {installerScanText(installerScan)}
+          </span>
+        </div>
+        <div className="installer-summary-grid">
+          <StatusTile title="已安装" value={`${installedCount}`} detail="可直接使用的运行库" />
+          <StatusTile title="缺失" value={`${missingCount}`} detail="基础能力可能不可用" />
+          <StatusTile title="需关注" value={`${attentionCount}`} detail="高级功能可能受影响" />
+        </div>
+        <div className="button-row">
+          <button className="primary-action compact" type="button" onClick={onRunInstallerScan} disabled={isInstallerScanning}>
+            {isInstallerScanning ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
+            <span>{isInstallerScanning ? "检测中" : "重新检测"}</span>
+          </button>
+        </div>
+      </div>
+      <div className="panel installer-main-list">
+        <div className="panel-heading">
+          <h2>运行库列表</h2>
+          <span className="badge muted">{installerItems.length > 0 ? `${installerItems.length} 项` : "加载中"}</span>
+        </div>
+        {installerItems.length > 0 ? (
+          <div className="installer-grid installer-status-grid">
+            {installerItems.map((item) => (
+              <article className={`installer-status-item ${item.status}`} key={item.id}>
+                <div>
+                  <BookOpenCheck size={18} />
+                  <strong>{item.name}</strong>
+                  <span className={installerBadgeClass(item.status)}>{installerStatusText(item.status)}</span>
+                </div>
+                <p>{item.version ?? item.detail}</p>
+                <small>{item.status === "installed" || item.status === "unsupported" ? item.detail : item.installHint}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="正在读取安装状态" description="检测会检查 Node.js、Git、curl、Python、Docker、WebView2 和 VC++ Runtime。" />
+        )}
+      </div>
+      <div className="panel installer-main-finding">
+        <div className="panel-heading">
+          <h2>安装建议</h2>
+          <span className="badge muted">{installerFindings.length > 0 ? `${installerFindings.length} 项` : "无需处理"}</span>
+        </div>
+        {installerFindings.length > 0 ? (
+          <div className="finding-list">
+            {installerFindings.map((finding) => (
+              <article className={`finding ${finding.severity}`} key={finding.id}>
+                <span>{severityLabel(finding.severity)}</span>
+                <div>
+                  <strong>{finding.title}</strong>
+                  <p>{finding.message}</p>
+                  <small>{finding.nextStep}</small>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="当前没有安装建议" description="基础运行库检测没有返回必须处理的问题。" />
+        )}
       </div>
     </section>
   );
@@ -1392,6 +1754,9 @@ function ProfessionalPage(props: {
   system: InvokeResult<SystemProfile> | null;
   apiKeys: InvokeResult<ApiKeySummary[]> | null;
   scan: InvokeResult<QuickScanResult> | null;
+  systemScan: InvokeResult<SystemEnvironmentScanResult> | null;
+  networkScan: InvokeResult<NetworkScanResult> | null;
+  installerScan: InvokeResult<InstallerScanResult> | null;
   scanRequest: { baseUrl: string; apiKey: string };
 }) {
   const [report, setReport] = useState<InvokeResult<DiagnosticReport> | null>(null);
@@ -1430,6 +1795,9 @@ function ProfessionalPage(props: {
           <PreBlock title="scan">{JSON.stringify(props.scan, null, 2)}</PreBlock>
           <PreBlock title="account">{JSON.stringify(props.account, null, 2)}</PreBlock>
           <PreBlock title="system">{JSON.stringify(props.system, null, 2)}</PreBlock>
+          <PreBlock title="systemScan">{JSON.stringify(props.systemScan, null, 2)}</PreBlock>
+          <PreBlock title="networkScan">{JSON.stringify(props.networkScan, null, 2)}</PreBlock>
+          <PreBlock title="installerScan">{JSON.stringify(props.installerScan, null, 2)}</PreBlock>
           <PreBlock title="apiKeys">{JSON.stringify(props.apiKeys, null, 2)}</PreBlock>
           <PreBlock title="diagnosticReport">{JSON.stringify(report, null, 2)}</PreBlock>
         </div>
@@ -1471,130 +1839,94 @@ function ServerIpRow({ server }: { server: NetworkServerIp }) {
   );
 }
 
-function LiveScanPanel({
-  liveScan,
-  scan,
-}: {
-  liveScan: LiveScanState;
-  scan: InvokeResult<QuickScanResult> | null;
-}) {
-  const failed = liveScan.steps.filter((step) => step.state === "fail").length;
-  const warned = liveScan.steps.filter((step) => step.state === "warn" || step.state === "skipped").length;
-  const passed = liveScan.steps.filter((step) => step.state === "pass").length;
-  const progressLabel = `${liveScan.completed}/${liveScan.total}`;
-
-  return (
-    <section className="panel scan-live-panel">
-      <div className="panel-heading">
-        <h2>实时体检进度</h2>
-        <span className={liveScan.active ? "badge info" : "badge muted"}>
-          {liveScan.active ? "正在体检" : scan?.state === "ok" ? "体检完成" : "等待开始"}
-        </span>
-      </div>
-
-      <div className="scan-progress-header">
-        <div>
-          <strong>{liveScan.message}</strong>
-          <span>
-            已完成 {progressLabel}
-            {liveScan.currentStepId ? ` · 当前：${currentStepTitle(liveScan)}` : ""}
-          </span>
-        </div>
-        <b>{Math.round(liveScan.progress)}%</b>
-      </div>
-      <div className="scan-progress-track" aria-label="体检进度">
-        <div style={{ width: `${liveScan.progress}%` }} />
-      </div>
-
-      <div className="scan-summary-strip">
-        <span className="summary-pass">通过 {passed}</span>
-        <span className="summary-warn">关注 {warned}</span>
-        <span className="summary-fail">失败 {failed}</span>
-      </div>
-
-      <div className="scan-step-list">
-        {liveScan.steps.map((step, index) => (
-          <article className={`scan-step ${step.state}`} key={step.id}>
-            <div className="scan-step-index">{index + 1}</div>
-            <div className="scan-step-icon">{stepIcon(step.state)}</div>
-            <div className="scan-step-body">
-              <div>
-                <strong>{step.title}</strong>
-                <span>{stepStateText(step.state)}</span>
-              </div>
-              <p>{step.message}</p>
-            </div>
-            <small>{typeof step.durationMs === "number" ? `${step.durationMs} ms` : ""}</small>
-          </article>
-        ))}
-      </div>
-    </section>
+function buildClientConfigItems(
+  env: NonNullable<SystemProfile["environment"]>,
+  tools: NonNullable<SystemProfile["tools"]>,
+  scanRequest: { baseUrl: string; apiKey: string },
+) {
+  const envMap = new Map(env.map((item) => [item.name.toUpperCase(), item]));
+  const hasBaseUrl = Boolean(
+    scanRequest.baseUrl ||
+      envMap.get("OPENAI_BASE_URL")?.value ||
+      envMap.get("OPENAI_API_BASE")?.value,
   );
+  const hasApiKey = Boolean(scanRequest.apiKey || envMap.get("OPENAI_API_KEY")?.value);
+  const toolAvailable = (name: string) => tools.some((tool) => tool.name === name && tool.available);
+
+  return [
+    {
+      id: "openai-env",
+      name: "OpenAI 兼容环境变量",
+      status: hasBaseUrl && hasApiKey ? "ready" : hasBaseUrl || hasApiKey ? "attention" : "missing",
+      message: hasBaseUrl && hasApiKey ? "已识别 Base URL 和 API Key 来源。" : "未同时识别 Base URL 与 API Key。",
+      detail: "检查 OPENAI_BASE_URL、OPENAI_API_BASE、OPENAI_API_KEY，以及当前全盘扫描输入。",
+    },
+    {
+      id: "node-clients",
+      name: "Cursor / Cline / Continue",
+      status: toolAvailable("node") && toolAvailable("npm") ? "ready" : "attention",
+      message: toolAvailable("node") && toolAvailable("npm") ? "Node.js 与 npm 可用，常见编辑器插件具备运行基础。" : "Node.js 或 npm 不可用，插件依赖可能安装失败。",
+      detail: "这些客户端通常依赖 Node.js 生态，具体配置写入将在备份流程完成后开放。",
+    },
+    {
+      id: "git-cli",
+      name: "Codex / Claude Code CLI",
+      status: toolAvailable("git") ? "ready" : "attention",
+      message: toolAvailable("git") ? "Git 可用，CLI 工具安装和项目操作具备基础条件。" : "Git 不可用，CLI 工具安装和项目操作可能失败。",
+      detail: "后续会读取 CLI 配置文件并生成可确认的写入预览。",
+    },
+    {
+      id: "open-webui",
+      name: "Open WebUI / Docker",
+      status: toolAvailable("docker") ? "ready" : "missing",
+      message: toolAvailable("docker") ? "Docker 可用，可以承载本地 Web UI 类工具。" : "Docker 不可用，本机部署 Open WebUI 会受限。",
+      detail: "远程 Web UI 不要求本机 Docker；本地部署时才需要。",
+    },
+  ] as Array<{
+    id: string;
+    name: string;
+    status: "ready" | "attention" | "missing";
+    message: string;
+    detail: string;
+  }>;
 }
 
-function ResultPanel({ scan }: { scan: InvokeResult<QuickScanResult> | null }) {
-  if (!scan) {
-    return <EmptyState title="尚未体检" description="点击开始体检后，这里会显示真实扫描结果和下一步动作。" />;
-  }
-
-  if (scan.state !== "ok") {
-    return <EmptyState title="扫描接口未就绪" description={scan.message || pendingText} />;
-  }
-
-  return (
-    <section className="panel">
-      <div className="panel-heading">
-        <h2>最近一次问题摘要</h2>
-        <span className="badge info">{scan.data.target ?? scan.data.scannedAt}</span>
-      </div>
-      {scan.data.checks && scan.data.checks.length > 0 && (
-        <div className="check-result-grid">
-          {scan.data.checks.map((check) => (
-            <div className={`check-result ${check.status}`} key={check.id}>
-              <strong>{check.title}</strong>
-              <span>{check.message}</span>
-              <small>{check.durationMs} ms</small>
-            </div>
-          ))}
-        </div>
-      )}
-      {scan.data.findings.length === 0 ? (
-        <EmptyState title="没有返回问题" description="后端扫描命令已执行，但没有返回 Finding。" />
-      ) : (
-        <div className="finding-list">
-          {scan.data.findings.map((finding) => (
-            <article className={`finding ${finding.severity}`} key={finding.id}>
-              <span>{severityLabel(finding.severity)}</span>
-              <div>
-                <strong>{finding.title}</strong>
-                <p>{finding.message}</p>
-                <small>{finding.nextStep}</small>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+function buildRepairItems(
+  scan: InvokeResult<QuickScanResult> | null,
+  systemScan: InvokeResult<SystemEnvironmentScanResult> | null,
+  networkScan: InvokeResult<NetworkScanResult> | null,
+  installerScan: InvokeResult<InstallerScanResult> | null,
+): RepairItem[] {
+  return [
+    ...findingsToRepairItems("全盘扫描", scan?.state === "ok" ? scan.data.findings : []),
+    ...findingsToRepairItems("系统环境", systemScan?.state === "ok" ? systemScan.data.findings : []),
+    ...findingsToRepairItems("网络检测", networkScan?.state === "ok" ? networkScan.data.findings : []),
+    ...findingsToRepairItems("软件安装", installerScan?.state === "ok" ? installerScan.data.findings : []),
+  ];
 }
 
-function ChecklistPanel({ title, items }: { title: string; items: string[] }) {
-  return (
-    <section className="panel">
-      <div className="panel-heading">
-        <h2>{title}</h2>
-        <span className="badge muted">等待接口适配</span>
-      </div>
-      <div className="check-list">
-        {items.map((item) => (
-          <div className="check-item" key={item}>
-            <span className="check-dot" />
-            <span>{item}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+function findingsToRepairItems(source: RepairSource, findings: ScanFinding[]): RepairItem[] {
+  return findings.map((finding) => ({
+    id: `${source}:${finding.id}`,
+    source,
+    title: finding.title,
+    severity: finding.severity,
+    message: finding.message,
+    nextStep: finding.nextStep,
+    fixSuggestion: finding.fixSuggestion,
+    evidence: finding.evidence,
+  }));
+}
+
+function repairPlanLine(item: RepairItem, index: number): string {
+  const suggestion = item.fixSuggestion ?? item.nextStep;
+  return `${index + 1}. [${item.source}] ${item.title}\n   问题：${item.message}\n   建议：${suggestion}`;
+}
+
+function groupNameForKey(key: ApiKeySummary, groups: AvailableGroup[]): string {
+  if (!key.groupId) return "未绑定";
+  const group = groups.find((item) => item.id === key.groupId);
+  return group ? group.name : `#${key.groupId}`;
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {
@@ -1882,9 +2214,4 @@ function statusBadgeClass(status: string): string {
   if (status === "passed") return "badge success";
   if (status === "failed") return "badge error";
   return "badge warning";
-}
-
-function invokeDetail<T>(result: InvokeResult<T> | null): string {
-  if (!result) return "加载中";
-  return result.state === "ok" ? statusText("ok") : result.message || statusText(result.state);
 }
