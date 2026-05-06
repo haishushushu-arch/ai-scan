@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Scan | msutools 桌面客户端</title>
+    <meta
+      name="description"
+      content="AI Scan 当前版本重点是本机体检和 API 连通性检查；账号、余额、充值入口和 Key 管理已接入真实命令，但仍需要 live 登录验证。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="AI Scan 首页">
+        <span class="brand-mark">AI</span>
+        <span>
+          <strong>AI Scan</strong>
+          <small>msutools desktop client</small>
+        </span>
+      </a>
+      <nav class="nav" aria-label="页面导航">
+        <a href="#download">下载</a>
+        <a href="#fit">适合谁</a>
+        <a href="#status">状态边界</a>
+        <a href="#updates">更新</a>
+        <a href="#docs">文档</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">桌面端 API 可用性体检</p>
+          <h1>AI Scan</h1>
+          <p class="lead">
+            当前版本重点是本机体检和 API 连通性：检查 API 地址、DNS、TCP、TLS、HTTP 和 `/v1/models`，并像系统扫描工具一样实时显示进度、当前步骤、通过项和异常项。账号登录、余额、充值入口和 API Key 管理已接入真实桌面命令，但仍需要 live 登录验证后才能承诺完整可用。
+          </p>
+          <div class="release-strip" id="download">
+            <span><strong>下载状态</strong> Windows exe、MSI 和 NSIS 安装包已在本地构建</span>
+            <span><strong>构建状态</strong> 当前产物仍是未签名开发构建，公开下载前需要代码签名</span>
+          </div>
+          <div class="hero-actions">
+            <a class="button primary" href="../docs/status.md">查看功能状态</a>
+            <a class="button primary" href="../docs/README.md">查看文档目录</a>
+            <a class="button" href="../CHANGELOG.md">更新记录</a>
+          </div>
+        </div>
+        <div class="product-frame" aria-label="AI Scan 桌面客户端界面示意">
+          <div class="window-bar">
+            <span></span><span></span><span></span>
+            <strong>ai-scan</strong>
+          </div>
+          <div class="app-preview">
+            <aside>
+              <b>AI Scan</b>
+              <span class="active">首页体检</span>
+              <span>我的账户</span>
+              <span>API Key</span>
+              <span>环境体检</span>
+              <span>修复中心</span>
+            </aside>
+            <section>
+              <div class="preview-title">
+                <small>一键体检</small>
+                <h2>先确认本机和 API 是否连得上</h2>
+              </div>
+              <div class="metric-grid">
+                <div><small>本机</small><strong>系统/工具</strong></div>
+                <div><small>API 服务</small><strong>DNS/TCP/TLS</strong></div>
+                <div><small>Key</small><strong>/v1/models</strong></div>
+              </div>
+              <div class="finding">
+                <span class="severity"></span>
+                <p>账号、余额、充值和 Key 管理不展示模拟数据；未完成 live 验证前只标为部分可用。</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="fit" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">适合谁</p>
+          <h2>先帮用户确认“能不能连上 API”</h2>
+        </div>
+        <div class="audience-grid">
+          <article>
+            <h3>普通用户</h3>
+            <p>不知道问题出在网络、Key、余额还是客户端配置时，先跑一次体检，把结论发给客服。</p>
+          </article>
+          <article>
+            <h3>客服和运营</h3>
+            <p>用脱敏结果判断是 DNS、TLS、HTTP、鉴权还是本机环境问题，减少来回询问。</p>
+          </article>
+          <article>
+            <h3>专业用户</h3>
+            <p>需要分层证据时查看 DNS、TCP、TLS、HTTP、状态码和工具版本，避免只看一个失败提示。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="client" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">产品范围</p>
+          <h2>桌面客户端优先处理真实诊断</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <span class="status done">已实现</span>
+            <h3>环境体检</h3>
+            <p>采集操作系统、架构、Shell、PATH、关键环境变量，以及 node、npm、git、curl、docker 版本。</p>
+          </article>
+          <article>
+            <span class="status done">已实现</span>
+            <h3>API 连通性扫描</h3>
+            <p>按 DNS、TCP、TLS、HTTP、/v1/models 的顺序定位问题，并实时显示进度条、当前步骤、通过/关注/失败计数和每项耗时。</p>
+          </article>
+          <article>
+            <span class="status pending">部分可用，待验证</span>
+            <h3>账号、余额、充值</h3>
+            <p>桌面端已有登录、两步验证、退出、账号刷新和充值跳转；live 响应兼容性仍需确认。</p>
+          </article>
+          <article>
+            <span class="status pending">部分可用，待验证</span>
+            <h3>API Key 管理</h3>
+            <p>桌面端已有列表、新建、删除和新 Key 一次性显示；编辑、禁用、复制、分组和 live 端点兼容仍需验证。</p>
+          </article>
+          <article>
+            <span class="status planned">规划中</span>
+            <h3>一键修复</h3>
+            <p>修复动作需要基于扫描 Finding 生成 repair plan，并展示预览、备份位置和复检结果。</p>
+          </article>
+          <article>
+            <span class="status planned">规划中</span>
+            <h3>客户端配置</h3>
+            <p>面向 Cursor、VS Code、Cline、Continue、Cherry Studio、Open WebUI、Codex CLI 等工具，先发现，后安全写入。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="status" class="section band">
+        <div class="section-heading">
+          <p class="eyebrow">不夸大能力</p>
+          <h2>已完成、待适配、规划分开写</h2>
+          <p class="section-note">完整状态只维护在 <a href="../docs/status.md">docs/status.md</a>。没有 live 验证的账号、余额、充值和 Key 管理不会写成完全可用。</p>
+        </div>
+        <div class="status-table" role="table" aria-label="能力状态">
+          <div class="row head" role="row">
+            <span>模块</span>
+            <span>当前状态</span>
+            <span>说明</span>
+          </div>
+          <div class="row" role="row">
+            <span>系统信息</span>
+            <span class="pill done">已实现</span>
+            <span>本机环境和工具版本检测可由 Tauri 后端返回。</span>
+          </div>
+          <div class="row" role="row">
+            <span>快速扫描</span>
+            <span class="pill done">已实现</span>
+            <span>支持 API base URL、DNS、TCP、TLS、HTTP、models 检查，并通过事件流驱动实时进度 UI。</span>
+          </div>
+          <div class="row" role="row">
+            <span>账号/余额/充值</span>
+            <span class="pill pending">部分可用</span>
+            <span>登录、账号刷新和充值跳转已接入；Turnstile 和 live 成功登录仍需验证。</span>
+          </div>
+          <div class="row" role="row">
+            <span>API Key 管理</span>
+            <span class="pill pending">部分可用</span>
+            <span>列表、新建、删除已接入；编辑、禁用、复制、分组和 live 响应兼容性仍需确认。</span>
+          </div>
+          <div class="row" role="row">
+            <span>自动修复/安装</span>
+            <span class="pill planned">规划中</span>
+            <span>需要 repair plan、备份、确认和复检链路。</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="updates" class="section updates">
+        <div class="section-heading">
+          <p class="eyebrow">更新记录</p>
+          <h2>发布说明必须说明能用什么，不能用什么</h2>
+        </div>
+        <div class="update-panel">
+          <div>
+            <h3>当前重点</h3>
+            <p>本机体检、API 连通性、脱敏诊断和能力边界说明。</p>
+          </div>
+          <div>
+            <h3>Windows 安装包已生成</h3>
+            <p>本地已生成 MSI 和 NSIS 安装器；官网正式下载入口会在代码签名、安装验证和 release note 完成后开放。</p>
+          </div>
+          <div class="update-links">
+            <a href="../CHANGELOG.md">查看 CHANGELOG</a>
+            <a href="../RELEASES/2026-05-06-docs-website-foundation.md">查看最近发布说明</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflow" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">排障路径</p>
+          <h2>先连通，再鉴权，再配置客户端</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>配置 API base URL</strong>
+            <p>使用 OpenAI-compatible 服务根地址；扫描器会处理缺失 scheme 和尾部 /v1。</p>
+          </li>
+          <li>
+            <strong>检查网络层</strong>
+            <p>DNS、TCP、TLS 和 HTTP 按顺序执行，方便定位域名、端口、证书和代理问题。</p>
+          </li>
+          <li>
+            <strong>验证 API Key</strong>
+            <p>提供 Key 后请求 /v1/models。401/403 优先检查 Key、权限、账户状态和余额。</p>
+          </li>
+          <li>
+            <strong>生成可读证据</strong>
+            <p>专业模式保留结构化状态；诊断报告模型包含脱敏信息，便于支持定位。</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="docs" class="section docs">
+        <div>
+          <p class="eyebrow">文档入口</p>
+          <h2>面向普通用户和专业用户分层维护</h2>
+        </div>
+        <div class="doc-links">
+          <a href="../docs/status.md">功能状态</a>
+          <a href="../docs/user/manual.md">用户手册</a>
+          <a href="../docs/user/troubleshooting.md">排障文档</a>
+          <a href="../docs/professional/professional-guide.md">专业指南</a>
+          <a href="../docs/developer/api.md">开发/接口文档</a>
+          <a href="../docs/maintenance/documentation-rules.md">维护规则</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>AI Scan documentation site</span>
+      <span>能力状态以当前代码和 release note 为准。</span>
+    </footer>
+  </body>
+</html>

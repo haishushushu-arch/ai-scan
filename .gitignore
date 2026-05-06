@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Frontend and TypeScript build output
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Tauri/Rust build output
+src-tauri/target/
+
+# Local probes and imported reference source
+.probe/
+.upstream/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# Local environment files
+.env
+.env.*
+!.env.example
