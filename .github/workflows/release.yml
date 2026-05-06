@@ -24,9 +24,6 @@ jobs:
           - name: macos-aarch64
             platform: macos-latest
             args: "--target aarch64-apple-darwin"
-          - name: macos-x64
-            platform: macos-13
-            args: "--target x86_64-apple-darwin"
           - name: linux-x64
             platform: ubuntu-22.04
             args: ""

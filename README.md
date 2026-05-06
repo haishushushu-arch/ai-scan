@@ -66,6 +66,6 @@ Windows MSI/NSIS packages are produced by `npm run tauri:build` and should be at
 
 GitHub Actions also builds desktop bundles automatically through `.github/workflows/release.yml`:
 
-- Publishing a GitHub Release uploads Windows, macOS, and Linux Tauri bundles to that release.
+- Publishing a GitHub Release uploads Windows x64, macOS Apple Silicon, and Linux x64 Tauri bundles to that release.
 - Pushing a tag such as `v0.1.0` or running the workflow manually builds bundles and stores them as workflow artifacts.
 - Current public builds are unsigned. Add platform signing secrets before treating release assets as production installers.
