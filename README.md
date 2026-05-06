@@ -63,3 +63,9 @@ Local build outputs are intentionally ignored by Git:
 - `.upstream/`
 
 Windows MSI/NSIS packages are produced by `npm run tauri:build` and should be attached to formal releases after code signing and smoke testing.
+
+GitHub Actions also builds desktop bundles automatically through `.github/workflows/release.yml`:
+
+- Publishing a GitHub Release uploads Windows, macOS, and Linux Tauri bundles to that release.
+- Pushing a tag such as `v0.1.0` or running the workflow manually builds bundles and stores them as workflow artifacts.
+- Current public builds are unsigned. Add platform signing secrets before treating release assets as production installers.
