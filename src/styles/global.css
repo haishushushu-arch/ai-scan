@@ -262,6 +262,17 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
   gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.account-page {
+  height: 100%;
+}
+
+.account-page .panel {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .primary-panel,
@@ -715,6 +726,7 @@ button {
   display: grid;
   grid-template-columns: 98px minmax(0, 1fr);
   gap: 10px;
+  min-width: 0;
   padding-bottom: 8px;
   border-bottom: 1px solid #edf1f5;
   font-size: 13px;
@@ -725,7 +737,9 @@ button {
 }
 
 .detail-list dd {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .button-row {
@@ -1143,6 +1157,8 @@ button {
 
 .system-check-panel,
 .system-finding-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -1428,6 +1444,11 @@ button {
   gap: 0;
 }
 
+.network-finding-panel.has-diagnostic {
+  grid-template-rows: auto minmax(0, 0.86fr) minmax(118px, 0.64fr);
+  gap: 8px;
+}
+
 .network-finding-panel .finding-list {
   max-height: none;
 }
@@ -1533,6 +1554,11 @@ button {
 
 .installer-finding-panel .finding-list {
   max-height: 100%;
+}
+
+.installer-finding-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .stack-form input:focus,
@@ -1747,7 +1773,7 @@ button {
 
 .client-config-page {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.45fr);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
   gap: 10px;
   height: 100%;
   min-height: 0;
@@ -1826,11 +1852,15 @@ button {
 
 .repair-page {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(116px, 0.34fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.repair-page.has-plan {
+  grid-template-rows: auto minmax(0, 1fr) minmax(116px, 0.34fr);
 }
 
 .repair-command-panel {
@@ -1862,7 +1892,7 @@ button {
 
 .repair-row {
   display: grid;
-  grid-template-columns: 38px 86px minmax(190px, 0.9fr) minmax(0, 1fr) 76px;
+  grid-template-columns: 34px 78px minmax(170px, 0.85fr) minmax(0, 1fr) 72px;
   align-items: center;
   gap: 8px;
   min-height: 54px;
@@ -1949,7 +1979,7 @@ button {
 
 .installer-page {
   display: grid;
-  grid-template-columns: minmax(250px, 0.42fr) minmax(0, 1fr) minmax(280px, 0.48fr);
+  grid-template-columns: minmax(210px, 0.38fr) minmax(0, 1fr) minmax(240px, 0.44fr);
   gap: 10px;
   height: 100%;
   min-height: 0;
@@ -1970,6 +2000,8 @@ button {
 .installer-summary-grid {
   display: grid;
   gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .installer-main-list,
@@ -2167,8 +2199,27 @@ code {
 .api-key-page > .two-column {
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .api-key-page .panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   min-height: 0;
+  overflow: hidden;
+}
+
+.api-key-page .stack-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.api-key-page .key-table-shell {
+  grid-template-rows: 34px minmax(0, 1fr);
+  height: 100%;
+}
+
+.api-key-page .table-body {
+  max-height: none;
 }

@@ -537,7 +537,7 @@ function AccountPage({
   }
 
   return (
-    <section className="two-column">
+    <section className="two-column account-page">
       <div className="panel">
         <div className="panel-heading">
           <h2>账户概览</h2>
@@ -1345,7 +1345,7 @@ function EnvironmentPage(props: {
             )}
           </section>
 
-          <section className="panel network-finding-panel">
+          <section className={networkResult?.diagnosticText ? "panel network-finding-panel has-diagnostic" : "panel network-finding-panel"}>
             <div className="panel-heading">
               <h2>错误详情</h2>
               <span className="badge muted">{networkFindings.length > 0 ? `${networkFindings.length} 项` : "无错误"}</span>
@@ -1572,7 +1572,7 @@ function RepairPage({
   }
 
   return (
-    <section className="repair-page">
+    <section className={repairPlan ? "repair-page has-plan" : "repair-page"}>
       <div className="panel repair-command-panel">
         <div className="panel-heading">
           <h2>修复中心</h2>
