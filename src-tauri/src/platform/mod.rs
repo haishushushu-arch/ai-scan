@@ -12,6 +12,7 @@ use tokio::time::timeout;
 
 use crate::core::models::{
     CheckStatus, EnvironmentVariable, Finding, ScanCheck, ScanOverallStatus, Severity,
+    InstallerCategory, InstallerItem, InstallerScanResult, InstallerStatus,
     SystemEnvironmentScanResult, SystemProfile, ToolVersion,
 };
 use crate::core::redaction;
@@ -74,6 +75,115 @@ pub async fn system_environment_scan() -> anyhow::Result<SystemEnvironmentScanRe
     })
 }
 
+pub async fn installer_scan() -> anyhow::Result<InstallerScanResult> {
+    let profile = system_profile().await?;
+    let mut items = Vec::new();
+
+    items.push(tool_installer_item(
+        &profile,
+        "node",
+        "Node.js LTS",
+        InstallerCategory::Runtime,
+        true,
+        "安装 Node.js LTS，并重新打开终端或客户端。",
+    ));
+    items.push(tool_installer_item(
+        &profile,
+        "npm",
+        "npm",
+        InstallerCategory::DeveloperTool,
+        true,
+        "通常随 Node.js 一起安装；缺失时请重装 Node.js LTS。",
+    ));
+    items.push(tool_installer_item(
+        &profile,
+        "git",
+        "Git",
+        InstallerCategory::DeveloperTool,
+        true,
+        "安装 Git for Windows/macOS/Linux，并确认 git 已加入 PATH。",
+    ));
+    items.push(tool_installer_item(
+        &profile,
+        "curl",
+        "curl",
+        InstallerCategory::DeveloperTool,
+        true,
+        "安装 curl 或启用系统自带 curl，用于 API 连通性检测。",
+    ));
+    items.push(command_installer_item(
+        "python",
+        "Python",
+        InstallerCategory::Runtime,
+        false,
+        "python",
+        &["--version"],
+        "安装 Python 3，并确认 python 或 python3 已加入 PATH。",
+    ).await);
+    items.push(tool_installer_item(
+        &profile,
+        "docker",
+        "Docker",
+        InstallerCategory::Container,
+        false,
+        "需要本地容器能力时安装 Docker Desktop 或 Docker Engine。",
+    ));
+
+    #[cfg(windows)]
+    {
+        items.push(windows_registry_installer_item(
+            "webview2",
+            "WebView2 Runtime",
+            InstallerCategory::SystemComponent,
+            true,
+            &[
+                r"HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+                r"HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+                r"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+            ],
+            "安装 Microsoft Edge WebView2 Runtime。Tauri 桌面应用依赖它显示界面。",
+        ).await);
+        items.push(windows_registry_installer_item(
+            "vcredist",
+            "VC++ Runtime",
+            InstallerCategory::SystemComponent,
+            true,
+            &[
+                r"HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+                r"HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+                r"HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86",
+                r"HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86",
+            ],
+            "安装 Microsoft Visual C++ Redistributable 2015-2022。",
+        ).await);
+    }
+
+    #[cfg(not(windows))]
+    {
+        items.push(unsupported_installer_item(
+            "webview2",
+            "WebView2 Runtime",
+            InstallerCategory::SystemComponent,
+            "WebView2 只适用于 Windows；当前平台不需要该运行库。",
+        ));
+        items.push(unsupported_installer_item(
+            "vcredist",
+            "VC++ Runtime",
+            InstallerCategory::SystemComponent,
+            "VC++ Runtime 只适用于 Windows；当前平台不需要该运行库。",
+        ));
+    }
+
+    let findings = installer_findings_from_items(&items);
+    let status = installer_overall_status(&items);
+    Ok(InstallerScanResult {
+        scanned_at: Utc::now().to_rfc3339(),
+        status,
+        items,
+        findings,
+    })
+}
+
 fn collect_environment() -> Vec<EnvironmentVariable> {
     let important = [
         "HTTP_PROXY",
@@ -122,7 +232,7 @@ async fn detect_tools() -> Vec<ToolVersion> {
 }
 
 async fn detect_tool(name: &str, executable: &str, args: &[&str]) -> ToolVersion {
-    match run_version_command(executable, args).await {
+    match run_version_command_with_windows_fallback(executable, args).await {
         Ok(version) => ToolVersion {
             name: name.to_string(),
             executable: executable.to_string(),
@@ -169,12 +279,257 @@ async fn run_version_command(executable: &str, args: &[&str]) -> anyhow::Result<
     }
 }
 
+async fn run_version_command_with_windows_fallback(
+    executable: &str,
+    args: &[&str],
+) -> anyhow::Result<String> {
+    match run_version_command(executable, args).await {
+        Ok(output) => Ok(output),
+        Err(primary_error) => {
+            #[cfg(windows)]
+            {
+                let candidates = windows_executable_fallbacks(executable);
+                for candidate in candidates {
+                    if candidate.eq_ignore_ascii_case(executable) {
+                        continue;
+                    }
+                    if let Ok(output) = run_version_command(&candidate, args).await {
+                        return Ok(output);
+                    }
+                }
+            }
+            Err(primary_error)
+        }
+    }
+}
+
+#[cfg(windows)]
+fn windows_executable_fallbacks(executable: &str) -> Vec<String> {
+    if executable.contains('.') {
+        Vec::new()
+    } else {
+        vec![
+            format!("{executable}.cmd"),
+            format!("{executable}.exe"),
+            format!("{executable}.bat"),
+        ]
+    }
+}
+
 fn first_line(value: &str) -> String {
     value.lines().next().unwrap_or(value).trim().to_string()
 }
 
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().to_string()
+}
+
+fn tool_installer_item(
+    profile: &SystemProfile,
+    id: &str,
+    name: &str,
+    category: InstallerCategory,
+    required: bool,
+    install_hint: &str,
+) -> InstallerItem {
+    let tool = profile
+        .tools
+        .iter()
+        .find(|item| item.name.eq_ignore_ascii_case(id));
+
+    match tool {
+        Some(tool) if tool.available => InstallerItem {
+            id: id.to_string(),
+            name: name.to_string(),
+            category,
+            status: InstallerStatus::Installed,
+            version: tool.version.clone(),
+            detail: tool
+                .version
+                .clone()
+                .unwrap_or_else(|| "命令可运行，但未返回版本。".to_string()),
+            required,
+            install_hint: install_hint.to_string(),
+        },
+        Some(tool) => InstallerItem {
+            id: id.to_string(),
+            name: name.to_string(),
+            category,
+            status: if required { InstallerStatus::Missing } else { InstallerStatus::NeedsAttention },
+            version: None,
+            detail: tool
+                .error
+                .clone()
+                .unwrap_or_else(|| "未检测到可用命令。".to_string()),
+            required,
+            install_hint: install_hint.to_string(),
+        },
+        None => InstallerItem {
+            id: id.to_string(),
+            name: name.to_string(),
+            category,
+            status: if required { InstallerStatus::Missing } else { InstallerStatus::NeedsAttention },
+            version: None,
+            detail: "未检测到可用命令。".to_string(),
+            required,
+            install_hint: install_hint.to_string(),
+        },
+    }
+}
+
+async fn command_installer_item(
+    id: &str,
+    name: &str,
+    category: InstallerCategory,
+    required: bool,
+    executable: &str,
+    args: &[&str],
+    install_hint: &str,
+) -> InstallerItem {
+    match run_version_command_with_windows_fallback(executable, args).await {
+        Ok(output) => InstallerItem {
+            id: id.to_string(),
+            name: name.to_string(),
+            category,
+            status: InstallerStatus::Installed,
+            version: Some(first_line(&output)),
+            detail: first_line(&output),
+            required,
+            install_hint: install_hint.to_string(),
+        },
+        Err(primary_error) if executable == "python" => match run_version_command_with_windows_fallback("python3", args).await {
+            Ok(output) => InstallerItem {
+                id: id.to_string(),
+                name: name.to_string(),
+                category,
+                status: InstallerStatus::Installed,
+                version: Some(first_line(&output)),
+                detail: first_line(&output),
+                required,
+                install_hint: install_hint.to_string(),
+            },
+            Err(secondary_error) => InstallerItem {
+                id: id.to_string(),
+                name: name.to_string(),
+                category,
+                status: if required { InstallerStatus::Missing } else { InstallerStatus::NeedsAttention },
+                version: None,
+                detail: format!("{primary_error}; python3: {secondary_error}"),
+                required,
+                install_hint: install_hint.to_string(),
+            },
+        },
+        Err(error) => InstallerItem {
+            id: id.to_string(),
+            name: name.to_string(),
+            category,
+            status: if required { InstallerStatus::Missing } else { InstallerStatus::NeedsAttention },
+            version: None,
+            detail: error.to_string(),
+            required,
+            install_hint: install_hint.to_string(),
+        },
+    }
+}
+
+#[cfg(windows)]
+async fn windows_registry_installer_item(
+    id: &str,
+    name: &str,
+    category: InstallerCategory,
+    required: bool,
+    keys: &[&str],
+    install_hint: &str,
+) -> InstallerItem {
+    for key in keys {
+        if let Ok(output) = run_version_command("reg", &["query", key]).await {
+            let version = registry_display_version(&output);
+            return InstallerItem {
+                id: id.to_string(),
+                name: name.to_string(),
+                category,
+                status: InstallerStatus::Installed,
+                version,
+                detail: format!("注册表项存在：{key}"),
+                required,
+                install_hint: install_hint.to_string(),
+            };
+        }
+    }
+
+    InstallerItem {
+        id: id.to_string(),
+        name: name.to_string(),
+        category,
+        status: if required { InstallerStatus::Missing } else { InstallerStatus::NeedsAttention },
+        version: None,
+        detail: "未在常见注册表位置检测到安装记录。".to_string(),
+        required,
+        install_hint: install_hint.to_string(),
+    }
+}
+
+#[cfg(windows)]
+fn registry_display_version(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.starts_with("pv") || trimmed.starts_with("Version") || trimmed.starts_with("DisplayVersion") {
+            trimmed.split_whitespace().last().map(|value| value.to_string())
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(not(windows))]
+fn unsupported_installer_item(
+    id: &str,
+    name: &str,
+    category: InstallerCategory,
+    detail: &str,
+) -> InstallerItem {
+    InstallerItem {
+        id: id.to_string(),
+        name: name.to_string(),
+        category,
+        status: InstallerStatus::Unsupported,
+        version: None,
+        detail: detail.to_string(),
+        required: false,
+        install_hint: detail.to_string(),
+    }
+}
+
+fn installer_findings_from_items(items: &[InstallerItem]) -> Vec<Finding> {
+    items
+        .iter()
+        .filter(|item| matches!(item.status, InstallerStatus::Missing | InstallerStatus::NeedsAttention))
+        .map(|item| Finding {
+            id: format!("installer_{}", item.id),
+            title: item.name.clone(),
+            severity: if item.required { Severity::High } else { Severity::Medium },
+            message: if item.required {
+                format!("{} 是基础运行环境，当前未检测到可用安装。", item.name)
+            } else {
+                format!("{} 当前不可用，相关功能可能受影响。", item.name)
+            },
+            next_step: item.install_hint.clone(),
+            fix_suggestion: Some(item.install_hint.clone()),
+        })
+        .collect()
+}
+
+fn installer_overall_status(items: &[InstallerItem]) -> ScanOverallStatus {
+    if items.iter().any(|item| item.required && matches!(item.status, InstallerStatus::Missing)) {
+        ScanOverallStatus::Failed
+    } else if items
+        .iter()
+        .any(|item| matches!(item.status, InstallerStatus::Missing | InstallerStatus::NeedsAttention))
+    {
+        ScanOverallStatus::NeedsAttention
+    } else {
+        ScanOverallStatus::Passed
+    }
 }
 
 fn check_os_profile(profile: &SystemProfile) -> ScanCheck {

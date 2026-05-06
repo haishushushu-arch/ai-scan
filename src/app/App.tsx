@@ -26,6 +26,7 @@ import {
   AccountStatus,
   ApiKeySummary,
   DiagnosticReport,
+  InstallerScanResult,
   InvokeResult,
   PublicSettings,
   ScanCheck,
@@ -119,10 +120,12 @@ export function App() {
   const [settings, setSettings] = useState<InvokeResult<PublicSettings> | null>(null);
   const [scan, setScan] = useState<InvokeResult<QuickScanResult> | null>(null);
   const [systemScan, setSystemScan] = useState<InvokeResult<SystemEnvironmentScanResult> | null>(null);
+  const [installerScan, setInstallerScan] = useState<InvokeResult<InstallerScanResult> | null>(null);
   const [liveScan, setLiveScan] = useState<LiveScanState>(initialLiveScan);
   const [scanRequest, setScanRequest] = useState({ baseUrl: "https://www.msutools.cn", apiKey: "" });
   const [isScanning, setIsScanning] = useState(false);
   const [isSystemScanning, setIsSystemScanning] = useState(false);
+  const [isInstallerScanning, setIsInstallerScanning] = useState(false);
 
   async function refreshAccountData() {
     const [nextAccount, nextKeys] = await Promise.all([
@@ -146,11 +149,21 @@ export function App() {
     }
   }
 
+  async function runInstallerScan() {
+    setIsInstallerScanning(true);
+    try {
+      setInstallerScan(await tauriApi.runInstallerScan());
+    } finally {
+      setIsInstallerScanning(false);
+    }
+  }
+
   useEffect(() => {
     void tauriApi.getPublicSettings().then(setSettings);
     void refreshAccountData();
     void tauriApi.getSystemProfile().then(setSystem);
     void runSystemEnvironmentScan();
+    void runInstallerScan();
   }, []);
 
   useEffect(() => {
@@ -282,14 +295,17 @@ export function App() {
             <EnvironmentPage
               system={system}
               systemScan={systemScan}
+              installerScan={installerScan}
               scan={scan}
               liveScan={liveScan}
               scanRequest={scanRequest}
               isScanning={isScanning}
               isSystemScanning={isSystemScanning}
+              isInstallerScanning={isInstallerScanning}
               onScanRequestChange={setScanRequest}
               onRunScan={runQuickScan}
               onRunSystemScan={runSystemEnvironmentScan}
+              onRunInstallerScan={runInstallerScan}
             />
           )}
           {activePage === "clients" && <ClientConfigPage />}
@@ -700,19 +716,24 @@ function ApiKeyPage({
 function EnvironmentPage(props: {
   system: InvokeResult<SystemProfile> | null;
   systemScan: InvokeResult<SystemEnvironmentScanResult> | null;
+  installerScan: InvokeResult<InstallerScanResult> | null;
   scan: InvokeResult<QuickScanResult> | null;
   liveScan: LiveScanState;
   scanRequest: { baseUrl: string; apiKey: string };
   isScanning: boolean;
   isSystemScanning: boolean;
+  isInstallerScanning: boolean;
   onScanRequestChange: (value: { baseUrl: string; apiKey: string }) => void;
   onRunScan: () => void;
   onRunSystemScan: () => void;
+  onRunInstallerScan: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<EnvironmentTabId>("fullScan");
   const networkChecks = props.scan?.state === "ok" ? props.scan.data.checks ?? [] : [];
   const systemChecks = props.systemScan?.state === "ok" ? props.systemScan.data.checks : [];
   const systemFindings = props.systemScan?.state === "ok" ? props.systemScan.data.findings : [];
+  const installerItems = props.installerScan?.state === "ok" ? props.installerScan.data.items : [];
+  const installerFindings = props.installerScan?.state === "ok" ? props.installerScan.data.findings : [];
 
   return (
     <section className="environment-page">
@@ -891,17 +912,55 @@ function EnvironmentPage(props: {
           <div className="panel">
             <div className="panel-heading">
               <h2>软件安装</h2>
-              <span className="badge info">计划阶段</span>
+              <span className={props.installerScan?.state === "ok" ? statusBadgeClass(props.installerScan.data.status) : "badge muted"}>
+                {installerScanText(props.installerScan)}
+              </span>
             </div>
-            <div className="installer-grid">
-              {["Node.js LTS", "Git", "Python", "Docker Desktop", "WebView2", "VC++ Runtime", "证书/代理工具"].map((item) => (
-                <div className="installer-item" key={item}>
-                  <BookOpenCheck size={18} />
-                  <span>{item}</span>
-                  <small>等待检测接口</small>
-                </div>
-              ))}
+            <div className="button-row installer-actions">
+              <button className="primary-action compact" type="button" onClick={props.onRunInstallerScan} disabled={props.isInstallerScanning}>
+                {props.isInstallerScanning ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
+                <span>{props.isInstallerScanning ? "检测中" : "重新检测"}</span>
+              </button>
             </div>
+            {installerItems.length > 0 ? (
+              <div className="installer-grid installer-status-grid">
+                {installerItems.map((item) => (
+                  <article className={`installer-status-item ${item.status}`} key={item.id}>
+                    <div>
+                      <BookOpenCheck size={18} />
+                      <strong>{item.name}</strong>
+                      <span className={installerBadgeClass(item.status)}>{installerStatusText(item.status)}</span>
+                    </div>
+                    <p>{item.version ?? item.detail}</p>
+                    <small>{item.status === "installed" || item.status === "unsupported" ? item.detail : item.installHint}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="正在检测软件环境" description="检测会检查 Node.js、Git、Python、Docker、WebView2 和 VC++ Runtime。" />
+            )}
+          </div>
+          <div className="panel installer-finding-panel">
+            <div className="panel-heading">
+              <h2>安装建议</h2>
+              <span className="badge muted">{installerFindings.length > 0 ? `${installerFindings.length} 项` : "无需处理"}</span>
+            </div>
+            {installerFindings.length > 0 ? (
+              <div className="finding-list">
+                {installerFindings.map((finding) => (
+                  <article className={`finding ${finding.severity}`} key={finding.id}>
+                    <span>{severityLabel(finding.severity)}</span>
+                    <div>
+                      <strong>{finding.title}</strong>
+                      <p>{finding.message}</p>
+                      <small>{finding.nextStep}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="运行库状态正常" description="基础运行库和常用工具没有返回必须处理的问题。" />
+            )}
           </div>
         </div>
       )}
@@ -1302,6 +1361,30 @@ function systemScanText(result: InvokeResult<SystemEnvironmentScanResult> | null
   if (result.data.status === "needs_attention") return "需关注";
   if (result.data.status === "not_ready") return "未就绪";
   return "需要处理";
+}
+
+function installerScanText(result: InvokeResult<InstallerScanResult> | null): string {
+  if (!result) return "检测中";
+  if (result.state !== "ok") return result.message || "检测失败";
+  if (result.data.status === "passed") return "全部可用";
+  if (result.data.status === "needs_attention") return "需关注";
+  if (result.data.status === "not_ready") return "未就绪";
+  return "需要安装";
+}
+
+function installerStatusText(status: string): string {
+  if (status === "installed") return "已安装";
+  if (status === "missing") return "未安装";
+  if (status === "needs_attention") return "需关注";
+  if (status === "unsupported") return "不适用";
+  return "未知";
+}
+
+function installerBadgeClass(status: string): string {
+  if (status === "installed") return "mini-badge success";
+  if (status === "missing") return "mini-badge error";
+  if (status === "unsupported") return "mini-badge muted";
+  return "mini-badge warning";
 }
 
 function statusBadgeClass(status: string): string {

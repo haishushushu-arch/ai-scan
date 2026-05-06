@@ -655,6 +655,41 @@ button {
   border-color: #d8dee8;
 }
 
+.mini-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.mini-badge.success {
+  color: #11643d;
+  background: #e6f5ee;
+  border-color: #bce3ce;
+}
+
+.mini-badge.warning {
+  color: #715100;
+  background: #fff7df;
+  border-color: #ead59d;
+}
+
+.mini-badge.error {
+  color: #a32626;
+  background: #fff5f5;
+  border-color: #efb7b7;
+}
+
+.mini-badge.muted {
+  color: #5f6f85;
+  background: #f0f3f7;
+  border-color: #d8dee8;
+}
+
 .detail-list {
   display: grid;
   gap: 8px;
@@ -869,6 +904,84 @@ button {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.installers-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.58fr);
+  gap: 10px;
+}
+
+.installer-actions {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.installer-status-grid {
+  max-height: calc(100% - 76px);
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.installer-status-item {
+  display: grid;
+  gap: 7px;
+  min-height: 96px;
+  padding: 10px;
+  border: 1px solid #e1e7ef;
+  border-radius: 5px;
+  background: #fbfcfe;
+}
+
+.installer-status-item div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.installer-status-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installer-status-item p {
+  overflow: hidden;
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installer-status-item small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #697586;
+  font-size: 12px;
+  line-height: 1.4;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.installer-status-item.installed {
+  border-color: #bce3ce;
+  background: #f2fbf6;
+}
+
+.installer-status-item.missing {
+  border-color: #efb7b7;
+  background: #fff5f5;
+}
+
+.installer-status-item.needs_attention {
+  border-color: #ead59d;
+  background: #fffaf0;
+}
+
+.installer-finding-panel .finding-list {
+  max-height: 100%;
 }
 
 .network-results {

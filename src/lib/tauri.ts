@@ -1,6 +1,7 @@
 export type CommandName =
   | "get_system_profile"
   | "run_system_environment_scan"
+  | "run_installer_scan"
   | "run_quick_scan"
   | "run_quick_scan_streamed"
   | "get_public_settings"
@@ -94,6 +95,24 @@ export type SystemEnvironmentScanResult = {
   checks: ScanCheck[];
   findings: ScanFinding[];
   profile: SystemProfile;
+};
+
+export type InstallerScanResult = {
+  scannedAt: string;
+  status: QuickScanResult["status"];
+  items: InstallerItem[];
+  findings: ScanFinding[];
+};
+
+export type InstallerItem = {
+  id: string;
+  name: string;
+  category: "runtime" | "developer_tool" | "container" | "system_component";
+  status: "installed" | "missing" | "needs_attention" | "unsupported";
+  version?: string;
+  detail: string;
+  required: boolean;
+  installHint: string;
 };
 
 export type ScanProgressPhase =
@@ -230,6 +249,7 @@ export async function listenTauriEvent<T>(
 export const tauriApi = {
   getSystemProfile: () => invokeCommand<SystemProfile>("get_system_profile"),
   runSystemEnvironmentScan: () => invokeCommand<SystemEnvironmentScanResult>("run_system_environment_scan"),
+  runInstallerScan: () => invokeCommand<InstallerScanResult>("run_installer_scan"),
   runQuickScan: (request?: QuickScanRequest) => invokeCommand<QuickScanResult>("run_quick_scan", { request: request ?? null }),
   runQuickScanStreamed: (request?: QuickScanRequest) =>
     invokeCommand<QuickScanResult>("run_quick_scan_streamed", { request: request ?? null }),

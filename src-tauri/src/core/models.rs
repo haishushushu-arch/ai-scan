@@ -440,3 +440,43 @@ pub struct SystemEnvironmentScanResult {
     pub findings: Vec<Finding>,
     pub profile: SystemProfile,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallerScanResult {
+    pub scanned_at: String,
+    pub status: ScanOverallStatus,
+    pub items: Vec<InstallerItem>,
+    pub findings: Vec<Finding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallerItem {
+    pub id: String,
+    pub name: String,
+    pub category: InstallerCategory,
+    pub status: InstallerStatus,
+    pub version: Option<String>,
+    pub detail: String,
+    pub required: bool,
+    pub install_hint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallerCategory {
+    Runtime,
+    DeveloperTool,
+    Container,
+    SystemComponent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallerStatus {
+    Installed,
+    Missing,
+    NeedsAttention,
+    Unsupported,
+}
