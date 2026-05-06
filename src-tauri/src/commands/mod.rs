@@ -228,18 +228,25 @@ fn normalize_api_key(value: Option<&str>) -> Option<String> {
 
 #[cfg(windows)]
 async fn set_windows_user_env(name: &str, value: &str) -> anyhow::Result<()> {
-    let output = tokio::process::Command::new("setx")
+    let output = tokio::process::Command::new("reg")
+        .arg("add")
+        .arg(r"HKCU\Environment")
+        .arg("/v")
         .arg(name)
+        .arg("/t")
+        .arg("REG_SZ")
+        .arg("/d")
         .arg(value)
+        .arg("/f")
         .output()
         .await
-        .map_err(|error| anyhow::anyhow!("无法启动 setx 写入 {name}: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("无法启动 reg.exe 写入 {name}: {error}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         anyhow::bail!(
-            "setx 写入 {name} 失败：{}",
+            "写入用户环境变量 {name} 失败：{}",
             if stderr.is_empty() { stdout } else { stderr }
         );
     }
