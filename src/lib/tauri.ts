@@ -15,6 +15,7 @@ export type CommandName =
   | "list_available_groups"
   | "create_api_key"
   | "delete_api_key"
+  | "apply_repair"
   | "export_diagnostic_report";
 
 export type InvokeState = "ok" | "unavailable" | "not_implemented" | "error";
@@ -74,6 +75,24 @@ export type ScanFinding = {
   nextStep: string;
   fixSuggestion?: string;
   evidence?: string;
+};
+
+export type RepairBackendActionId = "set_open_ai_user_env";
+export type RepairActionId = RepairBackendActionId | "rerun_full_scan";
+
+export type RepairApplyRequest = {
+  actionId: RepairBackendActionId;
+  baseUrl?: string;
+  apiKey?: string;
+};
+
+export type RepairApplyResult = {
+  actionId: RepairActionId;
+  applied: boolean;
+  message: string;
+  changedItems: string[];
+  requiresRestart: boolean;
+  evidence: unknown;
 };
 
 export type QuickScanResult = {
@@ -341,6 +360,7 @@ export const tauriApi = {
   listAvailableGroups: () => invokeCommand<AvailableGroup[]>("list_available_groups"),
   createApiKey: (request: CreateApiKeyRequest) => invokeCommand<CreatedApiKey>("create_api_key", { request }),
   deleteApiKey: (id: string) => invokeCommand<string>("delete_api_key", { request: { id } }),
+  applyRepair: (request: RepairApplyRequest) => invokeCommand<RepairApplyResult>("apply_repair", { request }),
   exportDiagnosticReport: (quickScan?: QuickScanRequest) =>
     invokeCommand<DiagnosticReport>("export_diagnostic_report", {
       request: {

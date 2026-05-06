@@ -358,6 +358,14 @@ button {
   font-size: 12px;
 }
 
+.primary-action.tiny {
+  min-width: 66px;
+  min-height: 28px;
+  padding: 0 9px;
+  gap: 5px;
+  font-size: 12px;
+}
+
 .secondary-action {
   min-height: 34px;
   padding: 0 12px;
@@ -1687,6 +1695,105 @@ button {
   margin-top: 4px;
 }
 
+.repair-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  width: min(680px, calc(100vw - 60px));
+  max-height: min(610px, calc(100vh - 52px));
+  overflow: hidden;
+}
+
+.repair-dialog-body {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.repair-dialog-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e1e7ef;
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.repair-dialog-item > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.repair-dialog-item strong,
+.repair-dialog-item span,
+.repair-dialog-item p,
+.repair-dialog-item small,
+.repair-result p,
+.repair-result small {
+  overflow-wrap: anywhere;
+}
+
+.repair-dialog-item strong {
+  color: #1f2a37;
+  font-size: 14px;
+}
+
+.repair-dialog-item span {
+  color: #697586;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.repair-dialog-item p {
+  margin: 0;
+}
+
+.repair-dialog-item ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 19px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.repair-dialog-item small {
+  color: #697586;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.repair-result {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.repair-result.success {
+  border: 1px solid #bce3ce;
+  background: #f2fbf6;
+  color: #17613b;
+}
+
+.repair-result.error {
+  border: 1px solid #efc6c6;
+  background: #fff5f5;
+  color: #a32626;
+}
+
+.repair-result p,
+.repair-result small {
+  margin: 0;
+  line-height: 1.45;
+}
+
 .notice {
   display: flex;
   align-items: flex-start;
@@ -1859,10 +1966,6 @@ button {
   overflow: hidden;
 }
 
-.repair-page.has-plan {
-  grid-template-rows: auto minmax(0, 1fr) minmax(116px, 0.34fr);
-}
-
 .repair-command-panel {
   display: grid;
   gap: 8px;
@@ -1874,8 +1977,7 @@ button {
   gap: 7px;
 }
 
-.repair-list-panel,
-.repair-plan-panel {
+.repair-list-panel {
   min-height: 0;
   overflow: hidden;
 }
@@ -1966,15 +2068,6 @@ button {
 .repair-body > .empty-state {
   border: 0;
   border-radius: 0;
-}
-
-.repair-plan-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-
-.repair-plan-panel pre {
-  max-height: 100%;
 }
 
 .installer-page {

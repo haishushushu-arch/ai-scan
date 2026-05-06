@@ -3,14 +3,17 @@ use std::time::Duration;
 
 use chrono::Utc;
 use tauri::Emitter;
+#[cfg(not(windows))]
+use tokio::io::AsyncWriteExt;
 use url::Url;
 
 use crate::core::models::{
     AccountStatus, ApiKeyList, AvailableGroup, CreatedApiKey, CreateApiKeyRequest, DeleteApiKeyRequest,
     DiagnosticReport, ExportDiagnosticReportRequest, InstallerScanResult, Login2faRequest,
     LoginRequest, LoginResult, NetworkScanRequest, NetworkScanResult, PublicSettings,
-    QuickScanRequest, QuickScanResult, ScanCheck, ScanOverallStatus, ScanProgressEvent,
-    ScanProgressPhase, SystemEnvironmentScanResult, SystemProfile,
+    QuickScanRequest, QuickScanResult, RepairActionId, RepairApplyRequest, RepairApplyResult,
+    ScanCheck, ScanOverallStatus, ScanProgressEvent, ScanProgressPhase,
+    SystemEnvironmentScanResult, SystemProfile,
 };
 use crate::{msutools, platform, scanners, telemetry};
 
@@ -126,8 +129,199 @@ pub async fn export_diagnostic_report(
         .map_err(to_command_error)
 }
 
+#[tauri::command]
+pub async fn apply_repair(request: RepairApplyRequest) -> Result<RepairApplyResult, String> {
+    match request.action_id {
+        RepairActionId::SetOpenAiUserEnv => apply_openai_user_env_repair(request)
+            .await
+            .map_err(to_command_error),
+    }
+}
+
 fn to_command_error(error: anyhow::Error) -> String {
     error.to_string()
+}
+
+async fn apply_openai_user_env_repair(
+    request: RepairApplyRequest,
+) -> anyhow::Result<RepairApplyResult> {
+    let base_url = scanners::normalize_base_url(request.base_url.as_deref())
+        .unwrap_or_else(|| msutools::base_url().trim_end_matches('/').to_string());
+    let api_key = normalize_api_key(request.api_key.as_deref());
+
+    if base_url.trim().is_empty() {
+        anyhow::bail!("API 地址为空，无法写入 OPENAI_BASE_URL。");
+    }
+
+    #[cfg(windows)]
+    {
+        set_windows_user_env("OPENAI_BASE_URL", &base_url).await?;
+        set_windows_user_env("OPENAI_API_BASE", &base_url).await?;
+        std::env::set_var("OPENAI_BASE_URL", &base_url);
+        std::env::set_var("OPENAI_API_BASE", &base_url);
+        let mut changed_items = vec![
+            "用户环境变量 OPENAI_BASE_URL".to_string(),
+            "用户环境变量 OPENAI_API_BASE".to_string(),
+        ];
+        let mut wrote_api_key = false;
+
+        if let Some(key) = api_key {
+            set_windows_user_env("OPENAI_API_KEY", &key).await?;
+            std::env::set_var("OPENAI_API_KEY", &key);
+            changed_items.push("用户环境变量 OPENAI_API_KEY".to_string());
+            wrote_api_key = true;
+        }
+
+        Ok(RepairApplyResult {
+            action_id: RepairActionId::SetOpenAiUserEnv,
+            applied: true,
+            message: if wrote_api_key {
+                "已写入当前 Windows 用户的 OpenAI 兼容环境变量。重新打开终端或 AI 客户端后生效。".to_string()
+            } else {
+                "已写入当前 Windows 用户的 API 地址环境变量。API Key 未填写，因此未写入 OPENAI_API_KEY。".to_string()
+            },
+            changed_items,
+            requires_restart: true,
+            evidence: serde_json::json!({
+                "scope": "user",
+                "baseUrl": base_url,
+                "apiKeyWritten": wrote_api_key,
+            }),
+        })
+    }
+
+    #[cfg(not(windows))]
+    {
+        let shell_profile = preferred_shell_profile_path()
+            .ok_or_else(|| anyhow::anyhow!("未找到可安全写入的 Shell 配置文件。"))?;
+        append_posix_env_exports(&shell_profile, &base_url, api_key.as_deref()).await?;
+        let mut changed_items = vec![format!("{}", shell_profile.display())];
+        let wrote_api_key = api_key.is_some();
+        if wrote_api_key {
+            changed_items.push("OPENAI_API_KEY".to_string());
+        }
+
+        Ok(RepairApplyResult {
+            action_id: RepairActionId::SetOpenAiUserEnv,
+            applied: true,
+            message: format!("已追加 OpenAI 兼容环境变量到 {}。重新打开终端或执行 source 后生效。", shell_profile.display()),
+            changed_items,
+            requires_restart: true,
+            evidence: serde_json::json!({
+                "scope": "user_shell_profile",
+                "profile": shell_profile,
+                "baseUrl": base_url,
+                "apiKeyWritten": wrote_api_key,
+            }),
+        })
+    }
+}
+
+fn normalize_api_key(value: Option<&str>) -> Option<String> {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.trim_start_matches("Bearer ").trim().to_string())
+}
+
+#[cfg(windows)]
+async fn set_windows_user_env(name: &str, value: &str) -> anyhow::Result<()> {
+    let output = tokio::process::Command::new("setx")
+        .arg(name)
+        .arg(value)
+        .output()
+        .await
+        .map_err(|error| anyhow::anyhow!("无法启动 setx 写入 {name}: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        anyhow::bail!(
+            "setx 写入 {name} 失败：{}",
+            if stderr.is_empty() { stdout } else { stderr }
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn preferred_shell_profile_path() -> Option<std::path::PathBuf> {
+    let home = dirs::home_dir()?;
+    let shell = std::env::var("SHELL").unwrap_or_default();
+    if shell.contains("zsh") {
+        Some(home.join(".zshrc"))
+    } else {
+        Some(home.join(".bashrc"))
+    }
+}
+
+#[cfg(not(windows))]
+async fn append_posix_env_exports(
+    path: &std::path::Path,
+    base_url: &str,
+    api_key: Option<&str>,
+) -> anyhow::Result<()> {
+    std::env::set_var("OPENAI_BASE_URL", base_url);
+    std::env::set_var("OPENAI_API_BASE", base_url);
+    if let Some(key) = api_key {
+        std::env::set_var("OPENAI_API_KEY", key);
+    }
+
+    let begin_marker = "# AI-SCAN managed environment begin";
+    let end_marker = "# AI-SCAN managed environment end";
+    let existing = tokio::fs::read_to_string(path).await.unwrap_or_default();
+    let preserved = remove_marked_block(&existing, begin_marker, end_marker);
+    let mut lines = vec![
+        String::new(),
+        begin_marker.to_string(),
+        format!("export OPENAI_BASE_URL={}", shell_quote(base_url)),
+        format!("export OPENAI_API_BASE={}", shell_quote(base_url)),
+    ];
+
+    if let Some(key) = api_key {
+        lines.push(format!("export OPENAI_API_KEY={}", shell_quote(key)));
+    }
+
+    lines.push(end_marker.to_string());
+    tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .await?
+        .write_all(format!("{}{}\n", preserved.trim_end(), lines.join("\n")).as_bytes())
+        .await?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn remove_marked_block(value: &str, begin_marker: &str, end_marker: &str) -> String {
+    let mut output = Vec::new();
+    let mut skipping = false;
+
+    for line in value.lines() {
+        if line.trim() == begin_marker {
+            skipping = true;
+            continue;
+        }
+        if skipping && line.trim() == end_marker {
+            skipping = false;
+            continue;
+        }
+        if !skipping {
+            output.push(line);
+        }
+    }
+
+    output.join("\n")
+}
+
+#[cfg(not(windows))]
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 async fn streamed_quick_scan(

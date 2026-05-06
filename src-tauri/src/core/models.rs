@@ -205,6 +205,31 @@ pub struct Finding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairApplyRequest {
+    pub action_id: RepairActionId,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepairActionId {
+    SetOpenAiUserEnv,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairApplyResult {
+    pub action_id: RepairActionId,
+    pub applied: bool,
+    pub message: String,
+    pub changed_items: Vec<String>,
+    pub requires_restart: bool,
+    pub evidence: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckStatus {
     Pass,

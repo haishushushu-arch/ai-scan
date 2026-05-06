@@ -34,6 +34,9 @@ import {
   NetworkScanResult,
   NetworkServerIp,
   PublicSettings,
+  RepairBackendActionId,
+  RepairActionId,
+  RepairApplyResult,
   ScanCheck,
   ScanFinding,
   ScanProgressEvent,
@@ -105,10 +108,15 @@ type FullScanRow = LiveScanStep & {
   finding?: ScanFinding;
 };
 
+type FullScanRepairDialogState = {
+  rows: FullScanRow[];
+};
+
 type RepairSource = "全盘扫描" | "系统环境" | "网络检测" | "软件安装";
 
 type RepairItem = {
   id: string;
+  findingId: string;
   source: RepairSource;
   title: string;
   severity: ScanFinding["severity"];
@@ -116,6 +124,32 @@ type RepairItem = {
   nextStep: string;
   fixSuggestion?: string;
   evidence?: string;
+};
+
+type RepairCapability =
+  | {
+      mode: "auto";
+      actionId: RepairActionId;
+      buttonText: string;
+      title: string;
+      summary: string;
+      steps: string[];
+      afterText: string;
+    }
+  | {
+      mode: "manual";
+      buttonText: string;
+      title: string;
+      summary: string;
+      steps: string[];
+      afterText?: string;
+    };
+
+type RepairDialogState = {
+  items: RepairItem[];
+  capabilities: RepairCapability[];
+  result?: InvokeResult<RepairApplyResult> | null;
+  busy?: boolean;
 };
 
 const defaultScanSteps: LiveScanStep[] = [
@@ -382,6 +416,7 @@ export function App() {
               systemScan={systemScan}
               networkScan={networkScan}
               installerScan={installerScan}
+              scanRequest={scanRequest}
               isScanning={isScanning || isSystemScanning || isNetworkScanning || isInstallerScanning}
               onRunFullScan={runQuickScan}
               onRunSystemScan={runSystemEnvironmentScan}
@@ -882,7 +917,7 @@ function EnvironmentPage(props: {
 }) {
   const [activeTab, setActiveTab] = useState<EnvironmentTabId>("fullScan");
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
-  const [repairMessage, setRepairMessage] = useState<string | null>(null);
+  const [fullScanRepairDialog, setFullScanRepairDialog] = useState<FullScanRepairDialogState | null>(null);
   const [expandedProbeIds, setExpandedProbeIds] = useState<Set<string>>(new Set());
   const [networkCopyText, setNetworkCopyText] = useState<string | null>(null);
   const networkResult = props.networkScan?.state === "ok" ? props.networkScan.data : null;
@@ -932,16 +967,9 @@ function EnvironmentPage(props: {
     });
   }
 
-  function showRepairPlan(rows: FullScanRow[]) {
-    if (rows.length === 0) {
-      setRepairMessage("当前没有可修复的未通过项。");
-      return;
-    }
-    setRepairMessage(
-      rows
-        .map((row, index) => `${index + 1}. ${row.title}：${repairTextForRow(row)}`)
-        .join("\n"),
-    );
+  function openFullScanRepairDialog(rows: FullScanRow[]) {
+    if (rows.length === 0) return;
+    setFullScanRepairDialog({ rows });
   }
 
   function toggleProbeDetails(id: string) {
@@ -1011,10 +1039,10 @@ function EnvironmentPage(props: {
                   className="secondary-action compact"
                   type="button"
                   disabled={repairTargetRows.length === 0}
-                  onClick={() => showRepairPlan(repairTargetRows)}
+                  onClick={() => openFullScanRepairDialog(repairTargetRows)}
                 >
                   <Wrench size={17} />
-                  <span>处理建议</span>
+                  <span>处理选中项</span>
                 </button>
               </div>
             </div>
@@ -1121,10 +1149,10 @@ function EnvironmentPage(props: {
                       <button
                         className="secondary-action tiny"
                         type="button"
-                        onClick={() => showRepairPlan([row])}
+                        onClick={() => openFullScanRepairDialog([row])}
                       >
-                        <Wrench size={14} />
-                        <span>建议</span>
+                        <BookOpenCheck size={14} />
+                        <span>查看步骤</span>
                       </button>
                     ) : (
                       <span className="scan-row-no-action">-</span>
@@ -1133,15 +1161,16 @@ function EnvironmentPage(props: {
                 ))}
               </div>
             </div>
-
-            {repairMessage && (
-              <div className="scan-repair-advice">
-                <strong>修复建议</strong>
-                <pre>{repairMessage}</pre>
-              </div>
-            )}
           </section>
         </div>
+      )}
+
+      {fullScanRepairDialog && (
+        <FullScanRepairDialog
+          rows={fullScanRepairDialog.rows}
+          onClose={() => setFullScanRepairDialog(null)}
+          onRunFullScan={props.onRunScan}
+        />
       )}
 
       {activeTab === "system" && (
@@ -1495,11 +1524,59 @@ function ClientConfigPage({
   );
 }
 
+function FullScanRepairDialog({
+  rows,
+  onClose,
+  onRunFullScan,
+}: {
+  rows: FullScanRow[];
+  onClose: () => void;
+  onRunFullScan: () => void;
+}) {
+  return (
+    <div className="confirm-overlay" role="dialog" aria-modal="true" aria-label="全盘扫描处理步骤">
+      <div className="confirm-dialog repair-dialog">
+        <div className="panel-heading">
+          <h2>处理扫描项</h2>
+          <span className="badge warning">需要按步骤处理</span>
+        </div>
+        <div className="repair-dialog-body">
+          {rows.map((row) => (
+            <article className="repair-dialog-item" key={row.id}>
+              <div>
+                <strong>{row.title}</strong>
+                <span>{stepStateText(row.state)} · {row.id}</span>
+              </div>
+              <p>{row.message}</p>
+              <ol>
+                {fullScanManualSteps(row).map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <small>{repairTextForRow(row)}</small>
+            </article>
+          ))}
+        </div>
+        <div className="button-row">
+          <button className="primary-action compact" type="button" onClick={onRunFullScan}>
+            <RefreshCw size={17} />
+            <span>重新全盘扫描</span>
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RepairPage({
   scan,
   systemScan,
   networkScan,
   installerScan,
+  scanRequest,
   isScanning,
   onRunFullScan,
   onRunSystemScan,
@@ -1510,6 +1587,7 @@ function RepairPage({
   systemScan: InvokeResult<SystemEnvironmentScanResult> | null;
   networkScan: InvokeResult<NetworkScanResult> | null;
   installerScan: InvokeResult<InstallerScanResult> | null;
+  scanRequest: { baseUrl: string; apiKey: string };
   isScanning: boolean;
   onRunFullScan: () => void;
   onRunSystemScan: () => void;
@@ -1520,18 +1598,30 @@ function RepairPage({
     () => buildRepairItems(scan, systemScan, networkScan, installerScan),
     [scan, systemScan, networkScan, installerScan],
   );
+  const repairCapabilities = useMemo(
+    () => new Map(repairItems.map((item) => [item.id, repairCapabilityForItem(item, scanRequest)])),
+    [repairItems, scanRequest],
+  );
   const [selectedRepairIds, setSelectedRepairIds] = useState<Set<string>>(new Set());
-  const [repairPlan, setRepairPlan] = useState<string | null>(null);
-  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [repairDialog, setRepairDialog] = useState<RepairDialogState | null>(null);
   const allSelected = repairItems.length > 0 && repairItems.every((item) => selectedRepairIds.has(item.id));
   const selectedItems = repairItems.filter((item) => selectedRepairIds.has(item.id));
-  const planItems = selectedItems.length > 0 ? selectedItems : repairItems;
+  const autoRepairItems = repairItems.filter((item) => repairCapabilities.get(item.id)?.mode === "auto");
+  const selectedAutoRepairItems = selectedItems.filter((item) => repairCapabilities.get(item.id)?.mode === "auto");
 
   useEffect(() => {
     setSelectedRepairIds((current) => {
       const allowed = new Set(repairItems.map((item) => item.id));
       const next = new Set([...current].filter((id) => allowed.has(id)));
       return next.size === current.size ? current : next;
+    });
+  }, [repairItems.map((item) => item.id).join("|")]);
+
+  useEffect(() => {
+    setRepairDialog((current) => {
+      if (!current) return current;
+      const allowed = new Set(repairItems.map((item) => item.id));
+      return current.items.every((item) => allowed.has(item.id)) ? current : null;
     });
   }, [repairItems.map((item) => item.id).join("|")]);
 
@@ -1553,26 +1643,91 @@ function RepairPage({
     });
   }
 
-  function generateRepairPlan(items: RepairItem[]) {
-    if (items.length === 0) {
-      setRepairPlan("当前没有真实扫描返回的可处理问题。");
-      return;
-    }
-    setRepairPlan(items.map((item, index) => repairPlanLine(item, index)).join("\n"));
+  function openRepairDialog(items: RepairItem[]) {
+    if (items.length === 0) return;
+    setRepairDialog({
+      items,
+      capabilities: items.map((item) => repairCapabilities.get(item.id) ?? repairCapabilityForItem(item, scanRequest)),
+      result: null,
+      busy: false,
+    });
   }
 
-  async function copyRepairPlan() {
-    if (!repairPlan) return;
+  async function applyDialogRepair() {
+    if (!repairDialog || repairDialog.busy) return;
+    const autoEntries = repairDialog.items
+      .map((item, index) => ({ item, capability: repairDialog.capabilities[index] }))
+      .filter((entry): entry is { item: RepairItem; capability: Extract<RepairCapability, { mode: "auto" }> } => entry.capability.mode === "auto");
+
+    if (autoEntries.length === 0) return;
+    const actionIds = [...new Set(autoEntries.map((entry) => entry.capability.actionId))];
+
+    setRepairDialog((current) => (current ? { ...current, busy: true, result: null } : current));
     try {
-      await navigator.clipboard.writeText(repairPlan);
-      setCopyMessage("修复建议已复制。");
-    } catch {
-      setCopyMessage("当前环境不允许自动复制，请手动选择文本。");
+      const messages: string[] = [];
+      const changedItems: string[] = [];
+      let hasError = false;
+      let ranBackendRepair = false;
+
+      for (const actionId of actionIds) {
+        if (actionId === "rerun_full_scan") {
+          onRunFullScan();
+          messages.push("已启动全盘复检。");
+          changedItems.push("全盘扫描任务");
+          continue;
+        }
+
+        const result = await tauriApi.applyRepair({
+          actionId: actionId as RepairBackendActionId,
+          baseUrl: scanRequest.baseUrl,
+          apiKey: scanRequest.apiKey || undefined,
+        });
+
+        if (result.state === "ok") {
+          ranBackendRepair = true;
+          messages.push(result.data.message);
+          changedItems.push(...result.data.changedItems);
+        } else {
+          hasError = true;
+          messages.push(result.message);
+        }
+      }
+
+      setRepairDialog((current) =>
+        current
+          ? {
+              ...current,
+              busy: false,
+              result: hasError
+                ? { state: "error", message: messages.join(" ") }
+                : {
+                    state: "ok",
+                    data: {
+                      actionId: "set_open_ai_user_env",
+                      applied: true,
+                      message: messages.join(" "),
+                      changedItems,
+                      requiresRestart: ranBackendRepair,
+                      evidence: { actions: actionIds },
+                    },
+                  },
+            }
+          : current,
+      );
+
+      if (ranBackendRepair) {
+        void onRunSystemScan();
+      }
+    } finally {
+      setRepairDialog((current) => (current ? { ...current, busy: false } : current));
     }
   }
+
+  const visibleAutoTarget = selectedAutoRepairItems.length > 0 ? selectedAutoRepairItems : autoRepairItems;
+  const hasManualInSelection = selectedItems.some((item) => repairCapabilities.get(item.id)?.mode !== "auto");
 
   return (
-    <section className={repairPlan ? "repair-page has-plan" : "repair-page"}>
+    <section className="repair-page">
       <div className="panel repair-command-panel">
         <div className="panel-heading">
           <h2>修复中心</h2>
@@ -1581,10 +1736,21 @@ function RepairPage({
           </span>
         </div>
         <div className="repair-actions">
-          <button className="primary-action compact" type="button" onClick={() => generateRepairPlan(planItems)} disabled={repairItems.length === 0}>
+          <button
+            className="primary-action compact"
+            type="button"
+            onClick={() => openRepairDialog(visibleAutoTarget)}
+            disabled={visibleAutoTarget.length === 0 || isScanning}
+          >
             <Wrench size={17} />
-            <span>生成修复建议</span>
+            <span>修复可自动处理项</span>
           </button>
+          {hasManualInSelection && (
+            <button className="secondary-action compact" type="button" onClick={() => openRepairDialog(selectedItems)}>
+              <BookOpenCheck size={17} />
+              <span>查看选中步骤</span>
+            </button>
+          )}
           <button className="secondary-action compact" type="button" onClick={onRunFullScan} disabled={isScanning}>
             <SearchCheck size={17} />
             <span>全盘复检</span>
@@ -1602,7 +1768,9 @@ function RepairPage({
             <span>安装复检</span>
           </button>
         </div>
-        <p className="muted-text">这里只基于真实扫描结果生成修复建议；自动改系统配置前必须有备份和确认流程。</p>
+        <p className="muted-text">
+          自动修复只开放已验证的低风险动作。不能安全自动处理的项目会显示明确步骤，不会假装已经修复。
+        </p>
       </div>
 
       <div className="panel repair-list-panel">
@@ -1613,33 +1781,40 @@ function RepairPage({
             </label>
             <span>来源</span>
             <span>问题</span>
-            <span>建议</span>
+            <span>处理方式</span>
             <span>操作</span>
           </div>
           <div className="repair-body" role="rowgroup">
             {repairItems.length > 0 ? (
-              repairItems.map((item) => (
-                <article className={`repair-row ${item.severity}`} role="row" key={item.id}>
-                  <label className="scan-check-cell">
-                    <input
-                      type="checkbox"
-                      checked={selectedRepairIds.has(item.id)}
-                      onChange={() => toggleRepairItem(item.id)}
-                      aria-label={`选择 ${item.title}`}
-                    />
-                  </label>
-                  <span className="repair-source">{item.source}</span>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <p>{item.message}</p>
-                  </div>
-                  <small>{item.fixSuggestion ?? item.nextStep}</small>
-                  <button className="secondary-action tiny" type="button" onClick={() => generateRepairPlan([item])}>
-                    <Wrench size={14} />
-                    <span>建议</span>
-                  </button>
-                </article>
-              ))
+              repairItems.map((item) => {
+                const capability = repairCapabilities.get(item.id) ?? repairCapabilityForItem(item, scanRequest);
+                return (
+                  <article className={`repair-row ${item.severity}`} role="row" key={item.id}>
+                    <label className="scan-check-cell">
+                      <input
+                        type="checkbox"
+                        checked={selectedRepairIds.has(item.id)}
+                        onChange={() => toggleRepairItem(item.id)}
+                        aria-label={`选择 ${item.title}`}
+                      />
+                    </label>
+                    <span className="repair-source">{item.source}</span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <p>{item.message}</p>
+                    </div>
+                    <small>{capability.summary}</small>
+                    <button
+                      className={capability.mode === "auto" ? "primary-action tiny" : "secondary-action tiny"}
+                      type="button"
+                      onClick={() => openRepairDialog([item])}
+                    >
+                      {capability.mode === "auto" ? <Wrench size={14} /> : <BookOpenCheck size={14} />}
+                      <span>{capability.buttonText}</span>
+                    </button>
+                  </article>
+                );
+              })
             ) : (
               <EmptyState title="没有待处理问题" description="当前全盘、系统、网络和安装扫描没有返回需要处理的 Finding。" />
             )}
@@ -1647,20 +1822,119 @@ function RepairPage({
         </div>
       </div>
 
-      {repairPlan && (
-        <div className="panel repair-plan-panel">
-          <div className="panel-heading">
-            <h2>修复建议</h2>
-            <button className="secondary-action tiny" type="button" onClick={copyRepairPlan}>
-              <Copy size={14} />
-              <span>复制</span>
-            </button>
-          </div>
-          <pre>{repairPlan}</pre>
-          {copyMessage && <p className="form-message compact-message">{copyMessage}</p>}
-        </div>
+      {repairDialog && (
+        <RepairDialog
+          state={repairDialog}
+          onClose={() => setRepairDialog(null)}
+          onApply={applyDialogRepair}
+          onRunFullScan={onRunFullScan}
+          onRunSystemScan={onRunSystemScan}
+          onRunNetworkScan={onRunNetworkScan}
+          onRunInstallerScan={onRunInstallerScan}
+        />
       )}
     </section>
+  );
+}
+
+function RepairDialog({
+  state,
+  onClose,
+  onApply,
+  onRunFullScan,
+  onRunSystemScan,
+  onRunNetworkScan,
+  onRunInstallerScan,
+}: {
+  state: RepairDialogState;
+  onClose: () => void;
+  onApply: () => void;
+  onRunFullScan: () => void;
+  onRunSystemScan: () => void;
+  onRunNetworkScan: () => void;
+  onRunInstallerScan: () => void;
+}) {
+  const autoCapabilities = state.capabilities.filter(
+    (capability): capability is Extract<RepairCapability, { mode: "auto" }> => capability.mode === "auto",
+  );
+  const manualCapabilities = state.capabilities.filter((capability) => capability.mode === "manual");
+  const canApply = autoCapabilities.length > 0;
+  const title = canApply
+    ? state.items.length > 1
+      ? "准备自动修复"
+      : state.capabilities[0]?.title ?? "准备自动修复"
+    : state.capabilities[0]?.title ?? "手动处理步骤";
+
+  function rerunBySource() {
+    const source = state.items[0]?.source;
+    if (source === "系统环境") onRunSystemScan();
+    else if (source === "网络检测") onRunNetworkScan();
+    else if (source === "软件安装") onRunInstallerScan();
+    else onRunFullScan();
+  }
+
+  return (
+    <div className="confirm-overlay" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="confirm-dialog repair-dialog">
+        <div className="panel-heading">
+          <h2>{title}</h2>
+          <span className={canApply ? "badge info" : "badge warning"}>
+            {canApply ? `${autoCapabilities.length} 项可自动修复` : "需要手动操作"}
+          </span>
+        </div>
+
+        <div className="repair-dialog-body">
+          {state.items.map((item, index) => {
+            const capability = state.capabilities[index];
+            return (
+              <article className="repair-dialog-item" key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>{item.source} · {capability.mode === "auto" ? "自动修复" : "手动处理"}</span>
+                </div>
+                <p>{capability.summary}</p>
+                <ol>
+                  {capability.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                {capability.afterText && <small>{capability.afterText}</small>}
+              </article>
+            );
+          })}
+        </div>
+
+        {manualCapabilities.length > 0 && canApply && (
+          <Notice kind="warning" text="选中的项目里包含不能安全自动修复的内容；本次只会执行自动项，手动项请按步骤处理。" />
+        )}
+
+        {state.result && (
+          <div className={state.result.state === "ok" ? "repair-result success" : "repair-result error"}>
+            <strong>{state.result.state === "ok" ? "执行结果" : "执行失败"}</strong>
+            <p>{state.result.state === "ok" ? state.result.data.message : state.result.message}</p>
+            {state.result.state === "ok" && state.result.data.changedItems.length > 0 && (
+              <small>{state.result.data.changedItems.join("、")}</small>
+            )}
+          </div>
+        )}
+
+        <div className="button-row">
+          {canApply && (
+            <button className="primary-action compact" type="button" onClick={onApply} disabled={state.busy}>
+              {state.busy ? <Loader2 size={17} className="spin" /> : <Wrench size={17} />}
+              <span>{state.busy ? "修复中" : "确认并修复"}</span>
+            </button>
+          )}
+          <button className="secondary-action compact" type="button" onClick={rerunBySource} disabled={state.busy}>
+            <RefreshCw size={17} />
+            <span>复检</span>
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onClose} disabled={state.busy}>
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1908,6 +2182,7 @@ function buildRepairItems(
 function findingsToRepairItems(source: RepairSource, findings: ScanFinding[]): RepairItem[] {
   return findings.map((finding) => ({
     id: `${source}:${finding.id}`,
+    findingId: finding.id,
     source,
     title: finding.title,
     severity: finding.severity,
@@ -1918,9 +2193,275 @@ function findingsToRepairItems(source: RepairSource, findings: ScanFinding[]): R
   }));
 }
 
-function repairPlanLine(item: RepairItem, index: number): string {
+function repairCapabilityForItem(
+  item: RepairItem,
+  scanRequest: { baseUrl: string; apiKey: string },
+): RepairCapability {
   const suggestion = item.fixSuggestion ?? item.nextStep;
-  return `${index + 1}. [${item.source}] ${item.title}\n   问题：${item.message}\n   建议：${suggestion}`;
+  const normalizedId = item.findingId.toLowerCase();
+
+  if (normalizedId === "scan_canceled") {
+    return {
+      mode: "auto",
+      actionId: "rerun_full_scan",
+      buttonText: "修复",
+      title: "重新完成全盘扫描",
+      summary: "这项可以直接处理：重新启动全盘扫描，替换被中断的半截结果。",
+      steps: [
+        "关闭本次弹窗后立即启动全盘扫描。",
+        "扫描会重新检测 DNS、TCP、TLS、HTTP 和模型接口。",
+        "完成后修复中心会按新的真实结果刷新待处理项。",
+      ],
+      afterText: "扫描期间不要关闭软件；如需停止，请使用全盘扫描页面的停止按钮。",
+    };
+  }
+
+  if (normalizedId.startsWith("ai_environment_")) {
+    const hasApiKey = Boolean(scanRequest.apiKey.trim());
+    const baseUrl = scanRequest.baseUrl.trim() || "https://www.msutools.cn";
+    return {
+      mode: "auto",
+      actionId: "set_open_ai_user_env",
+      buttonText: "修复",
+      title: "写入 AI 环境变量",
+      summary: "这项可以直接处理：写入当前用户级 OpenAI 兼容环境变量，让命令行客户端能读取 msutools API 地址。",
+      steps: [
+        `写入 OPENAI_BASE_URL=${baseUrl}`,
+        `写入 OPENAI_API_BASE=${baseUrl}`,
+        hasApiKey ? "写入 OPENAI_API_KEY，软件不会在界面明文展示该值。" : "当前未填写 API Key，因此不会写入 OPENAI_API_KEY。",
+        "重新打开终端、编辑器或 AI 客户端后生效。",
+      ],
+      afterText: "这是用户级配置，不修改系统级 PATH，也不会安装任何软件。",
+    };
+  }
+
+  return {
+    mode: "manual",
+    buttonText: "查看步骤",
+    title: manualRepairTitle(item),
+    summary: manualRepairSummary(item, suggestion),
+    steps: manualRepairSteps(item, suggestion, scanRequest),
+    afterText: manualRepairAfterText(item),
+  };
+}
+
+function manualRepairTitle(item: RepairItem): string {
+  const id = item.findingId.toLowerCase();
+  if (id.startsWith("installer_")) return "需要手动安装或修复运行库";
+  if (id.startsWith("network_") || item.source === "网络检测") return "需要按网络错误处理";
+  if (id.startsWith("path_")) return "需要手动清理 PATH";
+  if (id.startsWith("tooling_")) return "需要安装缺失命令";
+  if (id.startsWith("proxy_environment_")) return "需要确认代理配置";
+  if (id.startsWith("models_")) return "需要确认 API Key 和账户";
+  return "需要手动处理";
+}
+
+function manualRepairSummary(item: RepairItem, suggestion: string): string {
+  const id = item.findingId.toLowerCase();
+  if (id.startsWith("installer_")) {
+    return "这项会安装或改动系统运行库，软件不会静默安装。请按步骤安装后复检。";
+  }
+  if (id.includes("401") || item.message.includes("401")) {
+    return "服务器返回 401，通常是 API Key、账号状态或认证格式问题。";
+  }
+  if (id.includes("403") || item.message.includes("403")) {
+    return "服务器返回 403，通常是账号权限、IP 风控、WAF 或访问策略问题。";
+  }
+  if (id.includes("429") || item.message.includes("429")) {
+    return "服务器返回 429，通常是限流、余额不足、额度不足或请求太频繁。";
+  }
+  if (id.includes("521") || item.message.includes("521")) {
+    return "服务器返回 521，通常是 Cloudflare 无法连接源站，需要服务端处理。";
+  }
+  return suggestion;
+}
+
+function manualRepairSteps(
+  item: RepairItem,
+  suggestion: string,
+  scanRequest: { baseUrl: string; apiKey: string },
+): string[] {
+  const id = item.findingId.toLowerCase();
+  const baseUrl = scanRequest.baseUrl.trim() || "https://www.msutools.cn";
+
+  if (id.startsWith("base_url_missing") || id.startsWith("network_base_url_missing")) {
+    return [
+      "回到环境检测页的全盘扫描或网络检测区域。",
+      `把 API 地址填写为 ${baseUrl}，如果你有专属 API 域名则填写专属地址。`,
+      "重新点击扫描，确认 DNS、HTTP 和模型接口是否通过。",
+    ];
+  }
+
+  if (id.startsWith("installer_node") || id.startsWith("installer_npm")) {
+    return [
+      "打开 https://nodejs.org 下载 Node.js LTS 安装包。",
+      "安装时勾选加入 PATH，安装完成后关闭并重新打开终端或 AI 客户端。",
+      "回到 AI-SCAN 点击环境安装复检，确认 Node.js 和 npm 均通过。",
+    ];
+  }
+
+  if (id.startsWith("installer_git")) {
+    return [
+      "打开 https://git-scm.com/downloads 下载对应系统的 Git。",
+      "安装时保留将 Git 加入 PATH 的默认选项。",
+      "重新打开终端或客户端后点击环境安装复检。",
+    ];
+  }
+
+  if (id.startsWith("installer_curl")) {
+    return [
+      "Windows 10/11 通常自带 curl；如果不可用，请先安装系统更新或检查 PATH。",
+      "macOS/Linux 可使用系统包管理器安装 curl。",
+      "安装完成后重新打开终端，再点击环境安装复检。",
+    ];
+  }
+
+  if (id.startsWith("installer_python")) {
+    return [
+      "打开 https://www.python.org/downloads 下载 Python 3。",
+      "Windows 安装时勾选 Add python.exe to PATH。",
+      "重新打开终端或客户端后点击环境安装复检。",
+    ];
+  }
+
+  if (id.startsWith("installer_docker")) {
+    return [
+      "仅在需要本机运行 Open WebUI 等容器服务时安装 Docker。",
+      "Windows/macOS 安装 Docker Desktop；Linux 安装 Docker Engine。",
+      "启动 Docker 后点击环境安装复检。",
+    ];
+  }
+
+  if (id.startsWith("installer_webview2")) {
+    return [
+      "打开 Microsoft Edge WebView2 Runtime 官方下载页。",
+      "下载 Evergreen Bootstrapper 或 Evergreen Standalone Installer 并安装。",
+      "安装完成后重新打开 AI-SCAN，再执行环境安装复检。",
+    ];
+  }
+
+  if (id.startsWith("installer_vcredist")) {
+    return [
+      "打开 Microsoft Visual C++ Redistributable 2015-2022 官方下载页。",
+      "安装 x64 版本；如果你使用 32 位旧客户端，也安装 x86 版本。",
+      "安装完成后重新打开 AI-SCAN，再执行环境安装复检。",
+    ];
+  }
+
+  if (id.startsWith("dns_") || id.includes("_dns_")) {
+    return [
+      "确认 API 地址没有写错，推荐填写站点根地址，不要手动追加 /v1/models。",
+      "临时关闭异常 VPN、代理或安全软件后复检。",
+      "如果浏览器也无法打开域名，把 DNS 检测详情截图给客服。",
+    ];
+  }
+
+  if (id.startsWith("tcp_") || id.includes("_tcp_")) {
+    return [
+      "确认浏览器可以访问 API 地址。",
+      "临时关闭异常 VPN、代理、防火墙拦截规则后复检。",
+      "如果同一网络下多台设备都失败，把服务器 IP 和端口状态截图给客服。",
+    ];
+  }
+
+  if (id.startsWith("tls_") || id.includes("_tls_")) {
+    return [
+      "确认系统时间和时区正确。",
+      "临时关闭 HTTPS 抓包、证书替换代理或企业网关后复检。",
+      "如果只有目标站点失败，把 TLS 错误详情截图给客服。",
+    ];
+  }
+
+  if (id.startsWith("http_") || id.includes("_site_") || id.includes("_health_")) {
+    return [
+      "确认 API 地址填写的是站点根地址或你的专属根地址。",
+      "不要把地址写成 /v1/models、/api、/dashboard 等页面路径。",
+      "复制网络检测详情，连同 HTTP 状态码一起发给客服。",
+    ];
+  }
+
+  if (id.startsWith("models_") || id.includes("_models_")) {
+    return [
+      "确认 API Key 来自 msutools 当前登录账户，且没有过期或被删除。",
+      "如果复制时带了 Bearer 前缀，保留或删除都可以，软件会自动规范化；但不要复制多余空格或换行。",
+      "确认账户余额、分组和模型权限可用，然后重新检测 /v1/models。",
+    ];
+  }
+
+  if (id.includes("401")) {
+    return [
+      "重新登录 msutools，并在 API Key 页面创建一个新的 Key。",
+      "把新 Key 填入全盘扫描输入框后复检。",
+      "如果仍是 401，把响应详情截图给客服确认账号状态。",
+    ];
+  }
+
+  if (id.includes("403")) {
+    return [
+      "切换网络或关闭代理/VPN 后重新检测，排除出口 IP 风控。",
+      "确认账户和 API Key 所在分组有访问权限。",
+      "把本地出口 IP、cf-ray 或响应头截图给客服处理。",
+    ];
+  }
+
+  if (id.includes("429")) {
+    return [
+      "停止连续重试，等待限流窗口恢复。",
+      "检查账户余额、Key 限额和分组限速配置。",
+      "如果响应头里有 Retry-After，请按该时间后再复检。",
+    ];
+  }
+
+  if (id.includes("521") || id.includes("502") || id.includes("503") || id.includes("504")) {
+    return [
+      "这类错误通常在服务端或上游链路，用户本机无法直接修复。",
+      "复制网络检测详情，包含时间、URL、状态码、响应头和 body 预览。",
+      "把详情发给客服，由服务端检查源站、Cloudflare 或上游服务。",
+    ];
+  }
+
+  if (id.startsWith("path_")) {
+    return [
+      "打开系统环境变量设置，进入当前用户或系统 PATH。",
+      "删除空白项、重复项和明显不存在的目录；不确定的条目先保留。",
+      "保存后重新打开终端或客户端，再点击系统复检。",
+    ];
+  }
+
+  if (id.startsWith("proxy_environment_")) {
+    return [
+      "如果你的网络必须使用代理，请确认 HTTP_PROXY、HTTPS_PROXY、ALL_PROXY 是否正确。",
+      "如果不需要代理，请检查终端、系统环境变量和客户端里是否残留旧代理。",
+      "调整后重新打开客户端并执行网络复检。",
+    ];
+  }
+
+  if (id.startsWith("memory_")) {
+    return [
+      "关闭浏览器、编辑器、Docker、游戏或其他占用较高的程序。",
+      "等待系统负载下降后重新检测。",
+      "如果经常不足，考虑增加内存或减少同时运行的 AI 客户端数量。",
+    ];
+  }
+
+  if (id.startsWith("tooling_")) {
+    return [
+      "进入环境安装页查看缺失的具体命令。",
+      "按 Node.js、Git、curl 等运行库条目的安装步骤处理。",
+      "安装完成后重新打开终端或客户端，再点击系统复检和安装复检。",
+    ];
+  }
+
+  return [
+    suggestion,
+    "打开专业模式查看该项的结构化证据。",
+    "处理完成后点击对应复检按钮，确认状态变为通过。",
+  ];
+}
+
+function manualRepairAfterText(item: RepairItem): string {
+  if (item.evidence) return `证据：${item.evidence}`;
+  return "不能安全自动处理的项目不会执行本机改动。";
 }
 
 function groupNameForKey(key: ApiKeySummary, groups: AvailableGroup[]): string {
@@ -2065,6 +2606,59 @@ function isActionableRow(row: FullScanRow): boolean {
 
 function repairTextForRow(row: FullScanRow): string {
   return row.finding?.fixSuggestion ?? row.finding?.nextStep ?? fallbackRepairText(row.id);
+}
+
+function fullScanManualSteps(row: FullScanRow): string[] {
+  switch (row.id) {
+    case "target":
+      return [
+        "在全盘扫描上方填写 API 地址。",
+        "推荐填写 https://www.msutools.cn 或你的专属 API 根地址。",
+        "填写后重新点击全盘扫描。",
+      ];
+    case "dns":
+      return [
+        "确认 API 地址拼写正确，不要把 /v1/models 填进根地址。",
+        "临时关闭异常 VPN、代理或安全软件后重新扫描。",
+        "如果浏览器也打不开该域名，把 DNS 详情截图给客服。",
+      ];
+    case "tcp":
+      return [
+        "确认浏览器能访问 API 地址。",
+        "检查防火墙、代理、VPN 是否阻断 443 端口。",
+        "切换网络后重新全盘扫描。",
+      ];
+    case "tls":
+      return [
+        "确认系统日期、时间和时区正确。",
+        "临时关闭 HTTPS 抓包、证书替换代理或企业网关。",
+        "重新全盘扫描；若仍失败，把 TLS 证据截图给客服。",
+      ];
+    case "http":
+      return [
+        "确认 API 地址是站点根地址或专属根地址。",
+        "如果 HTTP 状态是 401、403、404、429、521，请到网络检测页展开详情。",
+        "复制网络诊断文本发给客服定位服务端或账号问题。",
+      ];
+    case "models":
+      return [
+        "确认已填写 msutools 当前账户创建的 API Key。",
+        "检查余额、分组权限和 Key 是否过期或被删除。",
+        "重新全盘扫描，确认 /v1/models 是否通过。",
+      ];
+    case "canceled":
+      return [
+        "点击重新全盘扫描。",
+        "等待扫描完成，不要中途点击停止。",
+        "完成后查看每个扫描项是否通过。",
+      ];
+    default:
+      return [
+        repairTextForRow(row),
+        "打开专业模式查看该项证据。",
+        "处理完成后重新全盘扫描。",
+      ];
+  }
 }
 
 function fallbackRepairText(id: string): string {

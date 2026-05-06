@@ -14,6 +14,8 @@ This project uses operational release notes instead of marketing summaries. Each
 
 ### Added
 
+- Added a real repair workflow for the Repair Center. Low-risk repairable findings now open a confirmation dialog that explains the exact action before running it, while non-repairable findings open clear manual steps instead of pretending to fix the issue.
+- Added a whitelisted Tauri `apply_repair` command for user-level OpenAI-compatible environment variables (`OPENAI_BASE_URL`, `OPENAI_API_BASE`, optional `OPENAI_API_KEY`) plus a repair path for rerunning an interrupted full scan.
 - Added real-time Home Health Check progress. The backend now emits `quick-scan-progress` events for start, each scan item start/finish, completion, and failures; the Home page shows a progress bar, current step, pass/warn/fail counts, per-step result, and duration from the real scanner.
 - Added real desktop account UI for email/password login, two-factor login challenges, logout, account refresh, and recharge link routing from public settings.
 - Added real API Key list/create/delete UI wired to the Tauri commands, including one-time display for newly created plaintext keys when the backend returns them.

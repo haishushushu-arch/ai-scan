@@ -28,6 +28,7 @@ pub fn run() {
             commands::list_available_groups,
             commands::create_api_key,
             commands::delete_api_key,
+            commands::apply_repair,
             commands::export_diagnostic_report,
         ])
         .run(tauri::generate_context!())
